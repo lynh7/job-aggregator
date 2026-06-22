@@ -1,6 +1,7 @@
 import json
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 from openpyxl import Workbook
 
@@ -28,13 +29,13 @@ HEADERS = [
 ]
 
 
-def export_jobs(jobs: list[JobResponse], export_dir: Path) -> tuple[Path, Path]:
+def export_jobs(jobs: list[JobResponse | Any], export_dir: Path) -> tuple[Path, Path]:
     export_dir.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     json_path = export_dir / f"jobs-{stamp}.json"
     xlsx_path = export_dir / f"jobs-{stamp}.xlsx"
 
-    payload = [job.model_dump(mode="json") for job in jobs]
+    payload = [_serialize_job(job) for job in jobs]
     json_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
     workbook = Workbook()
@@ -67,3 +68,9 @@ def export_jobs(jobs: list[JobResponse], export_dir: Path) -> tuple[Path, Path]:
     sheet.auto_filter.ref = sheet.dimensions
     workbook.save(xlsx_path)
     return json_path, xlsx_path
+
+
+def _serialize_job(job: JobResponse | Any) -> dict[str, Any]:
+    if isinstance(job, JobResponse):
+        return job.model_dump(mode="json")
+    return JobResponse.model_validate(job).model_dump(mode="json")

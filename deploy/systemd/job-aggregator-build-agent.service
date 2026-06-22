@@ -1,0 +1,14 @@
+[Unit]
+Description=Job Aggregator Docker Build Agent
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/andy/repositories/job-aggregator
+ExecStart=/usr/bin/env python3 /home/andy/repositories/job-aggregator/scripts/build_agent.py --mode daemon --poll-seconds 60
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

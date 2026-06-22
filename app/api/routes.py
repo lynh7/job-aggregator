@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException
 from fastapi.responses import FileResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -10,9 +10,15 @@ from app.config import Settings, get_settings
 from app.connectors.registry import build_providers
 from app.database import get_db
 from app.models import Job, RawJob
-from app.schemas import JobResponse, RawJobResponse, SearchRequest, SearchResponse
-from app.services.collector import apply_business_rules, collect_jobs, store_master_jobs, store_raw_jobs
-from app.services.exporter import export_jobs
+from app.schemas import (
+    IngestRawJobsRequest,
+    IngestResponse,
+    JobResponse,
+    RawJobResponse,
+    SearchRequest,
+    SearchResponse,
+)
+from app.services.collector import apply_business_rules, collect_jobs, persist_results
 
 router = APIRouter()
 
@@ -58,16 +64,38 @@ async def search_jobs(
         providers, request.keywords, request.location, request.limit_per_provider
     )
     results = apply_business_rules(build_business_rules_registry(), fetched)
-    stored_raw = store_raw_jobs(session, results)
-    stored_master = store_master_jobs(session, results, stored_raw)
-    responses = [JobResponse.model_validate(job) for job in stored_master]
-    json_path, xlsx_path = export_jobs(responses, settings.export_dir)
+    stored_master, json_path, xlsx_path = persist_results(session, settings, results, export=True)
     return SearchResponse(
         fetched=len(fetched),
         stored=len(stored_master),
         providers=requested,
         json_export=str(json_path),
         xlsx_export=str(xlsx_path),
+    )
+
+
+@router.post("/ingest/raw-jobs", response_model=IngestResponse)
+def ingest_raw_jobs(
+    request: IngestRawJobsRequest,
+    session: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+    ingest_token: str | None = Header(default=None, alias="X-Ingest-Token"),
+) -> IngestResponse:
+    _authorize_ingest(settings, ingest_token)
+    results = apply_business_rules(build_business_rules_registry(), request.records)
+    stored_master, json_path, xlsx_path = persist_results(
+        session,
+        settings,
+        results,
+        export=request.export,
+    )
+    providers = sorted({record.provider for record in request.records})
+    return IngestResponse(
+        fetched=len(request.records),
+        stored=len(stored_master),
+        providers=providers,
+        json_export=str(json_path) if json_path is not None else None,
+        xlsx_export=str(xlsx_path) if xlsx_path is not None else None,
     )
 
 
@@ -79,3 +107,8 @@ def download_export(filename: str, settings: Settings = Depends(get_settings)) -
     if not path.is_file():
         raise HTTPException(status_code=404, detail="Export not found")
     return FileResponse(path, filename=filename)
+
+
+def _authorize_ingest(settings: Settings, ingest_token: str | None) -> None:
+    if settings.ingest_api_token and ingest_token != settings.ingest_api_token:
+        raise HTTPException(status_code=401, detail="Invalid ingest token")

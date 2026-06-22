@@ -1,0 +1,33 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: crawler-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: crawler-api
+  template:
+    metadata:
+      labels:
+        app: crawler-api
+    spec:
+      containers:
+        - name: crawler-api
+          image: job-aggregator-crawler-api:latest
+          ports:
+            - containerPort: 8200
+          envFrom:
+            - secretRef:
+                name: job-aggregator-env
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: crawler-api
+spec:
+  selector:
+    app: crawler-api
+  ports:
+    - port: 8200
+      targetPort: 8200

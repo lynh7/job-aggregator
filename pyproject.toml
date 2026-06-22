@@ -22,6 +22,10 @@ dependencies = [
 
 [project.optional-dependencies]
 postgres = ["psycopg[binary]>=3.2,<4"]
+crawler = [
+  "beautifulsoup4>=4.12,<5",
+  "crawl4ai>=0.9,<1",
+]
 dev = [
   "pytest>=8.3,<9",
   "ruff>=0.8,<1",
@@ -32,7 +36,7 @@ job-aggregator = "app.cli:main"
 candidate-worker = "candidate_service.worker:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["app", "candidate_service"]
+packages = ["app", "candidate_service", "crawler_service"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

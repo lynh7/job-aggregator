@@ -59,3 +59,16 @@ class SearchResponse(BaseModel):
     providers: list[str]
     json_export: str
     xlsx_export: str
+
+
+class IngestRawJobsRequest(BaseModel):
+    records: list[RawJobRecord] = Field(min_length=1)
+    export: bool = True
+
+
+class IngestResponse(BaseModel):
+    fetched: int
+    stored: int
+    providers: list[str]
+    json_export: str | None = None
+    xlsx_export: str | None = None

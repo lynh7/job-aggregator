@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     app_env: str = "development"
     database_url: str = "sqlite:///./data/jobs.db"
     export_dir: Path = Path("./data/exports")
+    ingest_api_token: str | None = None
     enabled_providers: str = "mock"
     provider_api_key: str | None = None
     provider_base_url: str | None = None
@@ -28,6 +29,8 @@ class Settings(BaseSettings):
     candidate_match_limit: int = 50
     queue_backend: str = "database"
     nats_url: str = "nats://nats:4222"
+    core_api_base_url: str = "http://job-api:8000"
+    core_api_ingest_path: str = "/api/v1/ingest/raw-jobs"
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 

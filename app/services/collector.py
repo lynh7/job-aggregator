@@ -1,4 +1,5 @@
 import asyncio
+from pathlib import Path
 
 from sqlalchemy import select, tuple_
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
@@ -6,9 +7,11 @@ from sqlalchemy.orm import Session
 
 from app.business_rules.base import RuleResult
 from app.business_rules.registry import BusinessRulesRegistry
+from app.config import Settings
 from app.connectors.base import JobProvider
 from app.models import Job, RawJob
 from app.schemas import RawJobRecord
+from app.services.exporter import export_jobs
 
 
 async def collect_jobs(
@@ -27,6 +30,21 @@ def apply_business_rules(
     registry: BusinessRulesRegistry, records: list[RawJobRecord]
 ) -> list[RuleResult]:
     return [registry.apply(record) for record in records]
+
+
+def persist_results(
+    session: Session,
+    settings: Settings,
+    results: list[RuleResult],
+    *,
+    export: bool = True,
+) -> tuple[list[Job], Path | None, Path | None]:
+    stored_raw = store_raw_jobs(session, results)
+    stored_master = store_master_jobs(session, results, stored_raw)
+    if not export:
+        return stored_master, None, None
+    json_path, xlsx_path = export_jobs(stored_master, settings.export_dir)
+    return stored_master, json_path, xlsx_path
 
 
 def store_raw_jobs(session: Session, results: list[RuleResult]) -> list[RawJob]:

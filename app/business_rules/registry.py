@@ -1,5 +1,6 @@
 from app.business_rules.base import ProviderBusinessRules, RuleResult
 from app.business_rules.passthrough import PassThroughRules
+from app.business_rules.providers.itviec import ITViecV1Rules
 from app.business_rules.providers.mock import MockV1Rules
 from app.business_rules.providers.topcv import TopCVV1Rules
 from app.business_rules.providers.vietnamworks import VietnamWorksV1Rules
@@ -30,6 +31,7 @@ class BusinessRulesRegistry:
         return {provider: sorted(versions) for provider, versions in sorted(supported.items())}
 
 
+
 def build_business_rules_registry() -> BusinessRulesRegistry:
     registry = BusinessRulesRegistry()
 
@@ -39,4 +41,5 @@ def build_business_rules_registry() -> BusinessRulesRegistry:
     registry.register(PassThroughRules("authorized_api", "v1"))
     registry.register(TopCVV1Rules())
     registry.register(VietnamWorksV1Rules())
+    registry.register(ITViecV1Rules())
     return registry
