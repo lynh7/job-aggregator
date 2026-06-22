@@ -84,7 +84,7 @@ Before relying on this repo for cluster deployment, prioritize:
 2. Replace startup `create_all()` with migrations or a controlled bootstrap job.
 3. Add or verify readiness/liveness probes, requests/limits, and ingress/auth decisions.
 4. Make storage behavior explicit in chart values.
-5. Keep `compose.yaml`, Dockerfiles, README, `k8s/`, and Helm values aligned whenever topology changes.
+5. Keep Dockerfiles, README, `k8s/`, and Helm values aligned whenever topology changes.
 
 ## Validation checklist
 

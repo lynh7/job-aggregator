@@ -126,8 +126,7 @@ sequenceDiagram
 
 ## Deployment Shape
 
-- `compose.yaml` runs `api`, `candidate-api`, `candidate-worker`, and `nats`
-- Kubernetes manifests split those into separate deployments under `k8s/`
+- Kubernetes manifests split the workloads into separate deployments under `k8s/`
 - All services share the same `DATABASE_URL`
 - `candidate-api` and `candidate-worker` also share `/app/data` for uploaded documents
 - In production, PostgreSQL is the intended backend; SQLite is mainly for local development

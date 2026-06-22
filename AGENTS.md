@@ -9,7 +9,7 @@ Operational rules:
 - Keep `candidate_service/` focused on CV intake, parsing, matching, and worker execution.
 - Preserve `raw_jobs.payload` unchanged in connectors; provider interpretation belongs in `app/business_rules/`.
 - Treat `QUEUE_BACKEND=database` as the active production code path unless you are explicitly migrating logic onto NATS.
-- When changing runtime topology, keep `docker/`, `compose.yaml`, `k8s/`, and `Helm.Base/` aligned.
+- When changing runtime topology, keep `docker/`, `k8s/`, and `Helm.Base/` aligned.
 - Keep `Helm.Base/templates/` generic and move service-specific differences into values files.
 
 Validation defaults:

@@ -214,18 +214,14 @@ make build-candidate-api
 make build-candidate-worker
 ```
 
-Compose uses these service-specific Dockerfiles automatically.
-
 ## Queue app
 
-The project now ships a standalone NATS deployment for local and Kubernetes
+The project now ships a standalone NATS deployment for Kubernetes
 environments.
-
-Local compose service:
 
 - `nats` on `4222`
 - monitoring on `8222`
-- JetStream enabled with local persistence under `./data/nats`
+- JetStream enabled with persistent storage
 
 Relevant settings:
 
