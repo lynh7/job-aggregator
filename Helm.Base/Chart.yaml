@@ -1,0 +1,7 @@
+apiVersion: v2
+name: helm-base
+description: Reusable base Helm chart for job-aggregator services
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+

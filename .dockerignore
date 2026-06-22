@@ -1,0 +1,15 @@
+.git
+.gitignore
+.pytest_cache
+.ruff_cache
+.venv
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.env
+data/jobs.db
+data/candidates
+data/exports
+*.Zone.Identifier
+

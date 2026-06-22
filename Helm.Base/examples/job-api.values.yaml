@@ -1,0 +1,31 @@
+fullnameOverride: job-api
+replicaCount: 2
+image:
+  repository: job-aggregator-api
+  tag: latest
+containerPorts:
+  - name: http
+    containerPort: 8000
+service:
+  enabled: true
+  port: 8000
+  targetPort: 8000
+envFrom:
+  - secretRef:
+      name: job-aggregator-env
+volumeMounts:
+  - name: data
+    mountPath: /app/data
+volumes:
+  - name: data
+    persistentVolumeClaim:
+      claimName: job-aggregator-data
+readinessProbe:
+  httpGet:
+    path: /api/v1/health
+    port: 8000
+livenessProbe:
+  httpGet:
+    path: /api/v1/health
+    port: 8000
+

@@ -1,26 +1,47 @@
 services:
+  nats:
+    image: nats:2.10-alpine
+    command: ["-js", "-sd", "/data"]
+    ports:
+      - "4222:4222"
+      - "8222:8222"
+    volumes:
+      - ./data/nats:/data
+    restart: unless-stopped
   api:
-    build: .
-    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    image: job-aggregator-api:latest
+    build:
+      context: .
+      dockerfile: docker/job-api.Dockerfile
     env_file: .env
     ports:
       - "8000:8000"
     volumes:
       - ./data:/app/data
     restart: unless-stopped
+    depends_on:
+      - nats
   candidate-api:
-    build: .
-    command: ["uvicorn", "candidate_service.main:app", "--host", "0.0.0.0", "--port", "8100"]
+    image: job-aggregator-candidate-api:latest
+    build:
+      context: .
+      dockerfile: docker/candidate-api.Dockerfile
     env_file: .env
     ports:
       - "8100:8100"
     volumes:
       - ./data:/app/data
     restart: unless-stopped
+    depends_on:
+      - nats
   candidate-worker:
-    build: .
-    command: ["candidate-worker"]
+    image: job-aggregator-candidate-worker:latest
+    build:
+      context: .
+      dockerfile: docker/candidate-worker.Dockerfile
     env_file: .env
     volumes:
       - ./data:/app/data
     restart: unless-stopped
+    depends_on:
+      - nats

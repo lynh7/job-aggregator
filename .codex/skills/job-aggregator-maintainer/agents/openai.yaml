@@ -1,0 +1,4 @@
+interface:
+  display_name: "Job Aggregator Maintainer"
+  short_description: "Maintain the Job Aggregator repo"
+  default_prompt: "Use $job-aggregator-maintainer to work on the job-aggregator services, Docker images, and queue-backed workflows."

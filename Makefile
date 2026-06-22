@@ -1,4 +1,4 @@
-.PHONY: install dev test lint search candidate-dev candidate-worker
+.PHONY: install dev test lint search candidate-dev candidate-worker build-job-api build-candidate-api build-candidate-worker
 
 install:
 	python3 -m venv .venv
@@ -12,6 +12,15 @@ candidate-dev:
 
 candidate-worker:
 	.venv/bin/candidate-worker
+
+build-job-api:
+	docker build -f docker/job-api.Dockerfile -t job-aggregator-api:latest .
+
+build-candidate-api:
+	docker build -f docker/candidate-api.Dockerfile -t job-aggregator-candidate-api:latest .
+
+build-candidate-worker:
+	docker build -f docker/candidate-worker.Dockerfile -t job-aggregator-candidate-worker:latest .
 
 test:
 	.venv/bin/pytest

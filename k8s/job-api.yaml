@@ -1,22 +1,22 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: candidate-api
+  name: job-api
 spec:
   replicas: 2
   selector:
     matchLabels:
-      app: candidate-api
+      app: job-api
   template:
     metadata:
       labels:
-        app: candidate-api
+        app: job-api
     spec:
       containers:
-        - name: candidate-api
-          image: job-aggregator-candidate-api:latest
+        - name: job-api
+          image: job-aggregator-api:latest
           ports:
-            - containerPort: 8100
+            - containerPort: 8000
           envFrom:
             - secretRef:
                 name: job-aggregator-env
@@ -31,10 +31,11 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: candidate-api
+  name: job-api
 spec:
   selector:
-    app: candidate-api
+    app: job-api
   ports:
-    - port: 8100
-      targetPort: 8100
+    - port: 8000
+      targetPort: 8000
+

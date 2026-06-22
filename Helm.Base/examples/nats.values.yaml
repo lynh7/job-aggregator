@@ -1,0 +1,29 @@
+fullnameOverride: nats
+image:
+  repository: nats
+  tag: 2.10-alpine
+args:
+  - -js
+  - -sd
+  - /data
+containerPorts:
+  - name: client
+    containerPort: 4222
+  - name: monitor
+    containerPort: 8222
+service:
+  enabled: true
+  port: 4222
+  targetPort: 4222
+  extraPorts:
+    - name: monitor
+      port: 8222
+      targetPort: 8222
+      protocol: TCP
+persistence:
+  enabled: true
+  mountPath: /data
+  size: 10Gi
+volumeMounts:
+  - name: data
+    mountPath: /data

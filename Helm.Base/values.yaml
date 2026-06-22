@@ -1,0 +1,54 @@
+nameOverride: ""
+fullnameOverride: ""
+
+replicaCount: 1
+
+image:
+  repository: ""
+  tag: "latest"
+  pullPolicy: IfNotPresent
+
+command: []
+args: []
+
+serviceAccount:
+  create: false
+  annotations: {}
+  name: ""
+
+podAnnotations: {}
+podLabels: {}
+
+service:
+  enabled: true
+  type: ClusterIP
+  port: 80
+  targetPort: 80
+  extraPorts: []
+
+containerPorts: []
+
+env: []
+envFrom: []
+
+resources: {}
+
+volumeMounts: []
+volumes: []
+
+persistence:
+  enabled: false
+  accessModes:
+    - ReadWriteOnce
+  size: 5Gi
+  mountPath: ""
+
+livenessProbe: {}
+readinessProbe: {}
+
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 3
+  targetCPUUtilizationPercentage: 80
+

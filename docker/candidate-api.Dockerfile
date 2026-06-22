@@ -1,0 +1,17 @@
+FROM python:3.12-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+WORKDIR /app
+
+COPY pyproject.toml README.md ./
+COPY app ./app
+COPY candidate_service ./candidate_service
+RUN pip install --no-cache-dir .
+
+RUN mkdir -p /app/data/exports /app/data/candidates
+
+EXPOSE 8100
+CMD ["uvicorn", "candidate_service.main:app", "--host", "0.0.0.0", "--port", "8100"]
+

@@ -16,6 +16,8 @@ versioned business rules, and exporting JSON and XLSX files.
 - JSON and XLSX exports
 - CLI and HTTP API
 - Separate candidate-matching backend service
+- Lightweight NATS messaging app for future event-driven workflows
+- Reusable `Helm.Base/` chart for service deployments
 - Docker-ready
 
 The repository intentionally does not scrape Indeed, TopCV, or bypass anti-bot
@@ -51,6 +53,14 @@ candidate_documents + candidate_tasks
 candidate-worker pods
       |
 CV text extraction -> candidate_profiles -> job_matches
+```
+
+Messaging app:
+
+```text
+NATS + JetStream
+      |
+future cross-service events and async workflows
 ```
 
 ## Raw data and business rules
@@ -170,6 +180,11 @@ Worker pods can also scale horizontally, with one important constraint:
 - SQLite remains suitable for local development only and does not provide the
   same concurrency guarantees.
 
+NATS is now included as a lightweight in-cluster messaging app for future
+cross-service event flows. The current candidate worker still uses the
+database-backed queue by default with `QUEUE_BACKEND=database`, so no existing
+workflow was silently migrated.
+
 Candidate processing is idempotent at the task boundary:
 
 - tasks are persisted in `candidate_tasks`
@@ -178,8 +193,67 @@ Candidate processing is idempotent at the task boundary:
 
 Reference manifests are included in:
 
-- [candidate-api.yaml](/home/tlta17/job-aggregator-backend/k8s/candidate-api.yaml)
-- [candidate-worker.yaml](/home/tlta17/job-aggregator-backend/k8s/candidate-worker.yaml)
+- [job-api.yaml](/home/tlta17/job-aggregator/job-aggregator/k8s/job-api.yaml)
+- [candidate-api.yaml](/home/tlta17/job-aggregator/job-aggregator/k8s/candidate-api.yaml)
+- [candidate-worker.yaml](/home/tlta17/job-aggregator/job-aggregator/k8s/candidate-worker.yaml)
+- [nats.yaml](/home/tlta17/job-aggregator/job-aggregator/k8s/nats.yaml)
+
+## Docker images
+
+Each service now has its own Dockerfile and image tag:
+
+- `docker/job-api.Dockerfile` -> `job-aggregator-api:latest`
+- `docker/candidate-api.Dockerfile` -> `job-aggregator-candidate-api:latest`
+- `docker/candidate-worker.Dockerfile` -> `job-aggregator-candidate-worker:latest`
+
+Build commands:
+
+```bash
+make build-job-api
+make build-candidate-api
+make build-candidate-worker
+```
+
+Compose uses these service-specific Dockerfiles automatically.
+
+## Queue app
+
+The project now ships a standalone NATS deployment for local and Kubernetes
+environments.
+
+Local compose service:
+
+- `nats` on `4222`
+- monitoring on `8222`
+- JetStream enabled with local persistence under `./data/nats`
+
+Relevant settings:
+
+- `QUEUE_BACKEND=database`
+- `NATS_URL=nats://nats:4222`
+
+`QUEUE_BACKEND` remains `database` by default so the current worker behavior is
+unchanged while the broker is introduced.
+
+## Helm.Base
+
+`Helm.Base/` is a reusable base chart for the services in this repo. The chart
+contains generic Deployment, Service, PVC, ServiceAccount, and optional HPA
+templates.
+
+Reuse pattern:
+
+- put common template logic in `Helm.Base/templates/`
+- override per-service values from `Helm.Base/examples/*.values.yaml`
+
+Example rendering commands:
+
+```bash
+helm template job-api ./Helm.Base -f ./Helm.Base/examples/job-api.values.yaml
+helm template candidate-api ./Helm.Base -f ./Helm.Base/examples/candidate-api.values.yaml
+helm template candidate-worker ./Helm.Base -f ./Helm.Base/examples/candidate-worker.values.yaml
+helm template nats ./Helm.Base -f ./Helm.Base/examples/nats.values.yaml
+```
 
 ## Supabase/PostgreSQL
 

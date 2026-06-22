@@ -1,0 +1,18 @@
+fullnameOverride: candidate-worker
+replicaCount: 2
+image:
+  repository: job-aggregator-candidate-worker
+  tag: latest
+envFrom:
+  - secretRef:
+      name: job-aggregator-env
+volumeMounts:
+  - name: data
+    mountPath: /app/data
+volumes:
+  - name: data
+    persistentVolumeClaim:
+      claimName: job-aggregator-data
+service:
+  enabled: false
+

@@ -14,8 +14,7 @@ spec:
     spec:
       containers:
         - name: candidate-worker
-          image: job-aggregator-backend:latest
-          command: ["candidate-worker"]
+          image: job-aggregator-candidate-worker:latest
           envFrom:
             - secretRef:
                 name: job-aggregator-env

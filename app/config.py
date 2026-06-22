@@ -16,6 +16,8 @@ class Settings(BaseSettings):
     candidate_storage_dir: Path = Path("./data/candidates")
     candidate_task_poll_seconds: float = 2.0
     candidate_match_limit: int = 50
+    queue_backend: str = "database"
+    nats_url: str = "nats://nats:4222"
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
