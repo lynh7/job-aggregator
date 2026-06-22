@@ -10,118 +10,91 @@ NATS is deployed for future event-driven workflows, but it is not the primary ta
 
 ## Runtime Diagram
 
-```mermaid
-flowchart TB
-    subgraph Clients
-        U1[Operators / CLI]
-        U2[Frontend or API Consumers]
-        P[Authorized Job Providers]
-    end
+```text
+Clients
+  Operators / CLI --------------------------> Job API
+  Frontend or API consumers ----------------> Candidate API
+  Authorized job providers <---------------> Job API
 
-    subgraph Services
-        API[Job API<br/>FastAPI<br/>app/]
-        CAPI[Candidate API<br/>FastAPI<br/>candidate_service/]
-        WORKER[Candidate Worker<br/>Background process<br/>candidate_service/worker.py]
-        NATS[NATS + JetStream<br/>Future event bus]
-    end
+Services
+  Job API (FastAPI, app/)
+    -> fetches raw provider records
+    -> stores untouched payloads in raw_jobs
+    -> applies business rules
+    -> writes normalized projections to jobs
+    -> writes export files to /app/data
 
-    subgraph Persistence
-        DB[(PostgreSQL or SQLite<br/>SQLAlchemy shared database)]
-        FILES[/Shared /app/data volume<br/>exports + candidate uploads/]
-    end
+  Candidate API (FastAPI, candidate_service/)
+    -> creates candidates
+    -> stores candidate document metadata
+    -> saves uploaded CV files to /app/data
+    -> enqueues parse, rematch, and apply tasks in candidate_tasks
 
-    subgraph Database Tables
-        RAW[raw_jobs]
-        JOBS[jobs]
-        CAND[candidates]
-        CDOC[candidate_documents]
-        CPROF[candidate_profiles]
-        CTASK[candidate_tasks]
-        MATCH[job_matches]
-        APPS[job_applications]
-    end
+  Candidate Worker (candidate_service/worker.py)
+    -> claims pending tasks from candidate_tasks
+    -> reads CV files from /app/data
+    -> parses CVs into candidate_profiles
+    -> reads projected jobs
+    -> writes job_matches
+    -> persists job_applications
 
-    U1 -->|search jobs / run exports| API
-    U2 -->|upload CV / view matches| CAPI
-    P -->|provider APIs / feeds| API
+  NATS + JetStream
+    -> present for future event-driven workflows
+    -> not the active transport for candidate tasks today
 
-    API -->|fetch raw provider records| P
-    API -->|store untouched payloads| RAW
-    API -->|apply business rules| JOBS
-    API -->|write export files| FILES
+Persistence
+  Shared database (PostgreSQL in production, SQLite for local development)
+    -> raw_jobs
+    -> jobs
+    -> candidates
+    -> candidate_documents
+    -> candidate_profiles
+    -> candidate_tasks
+    -> job_matches
+    -> job_applications
 
-    CAPI -->|create candidate records| CAND
-    CAPI -->|store document metadata| CDOC
-    CAPI -->|save uploaded files| FILES
-    CAPI -->|enqueue parse/match/apply tasks| CTASK
-
-    WORKER -->|claim pending tasks| CTASK
-    WORKER -->|read CV files| FILES
-    WORKER -->|parse CVs| CPROF
-    WORKER -->|read projected jobs| JOBS
-    WORKER -->|write ranked matches| MATCH
-    WORKER -->|persist provider applications| APPS
-
-    DB --> RAW
-    DB --> JOBS
-    DB --> CAND
-    DB --> CDOC
-    DB --> CPROF
-    DB --> CTASK
-    DB --> MATCH
-    DB --> APPS
-
-    API -. configured but not primary path .-> NATS
-    CAPI -. configured but not primary path .-> NATS
-    WORKER -. configured but not primary path .-> NATS
+  Shared /app/data volume
+    -> exports
+    -> uploaded candidate documents
 ```
 
 ## Main Flows
 
 ### 1. Job ingestion
 
-```mermaid
-sequenceDiagram
-    participant Client as CLI / REST client
-    participant API as Job API
-    participant Provider as Authorized provider
-    participant Rules as Business rules
-    participant DB as Database
-    participant FS as /app/data exports
+```text
+CLI / REST client
+  -> sends search request to Job API
 
-    Client->>API: Search request
-    API->>Provider: Fetch listings
-    Provider-->>API: Raw provider payloads
-    API->>DB: Store raw_jobs.payload unchanged
-    API->>Rules: Apply provider/api_version rules
-    Rules-->>API: Optional normalized job projection
-    API->>DB: Upsert jobs
-    API->>FS: Write JSON/XLSX exports
-    API-->>Client: Search results + export references
+Job API
+  -> calls authorized provider APIs
+  -> receives raw provider payloads
+  -> stores raw_jobs.payload unchanged
+  -> applies business rules using (provider, api_version)
+  -> optionally writes normalized job projections to jobs
+  -> writes JSON/XLSX exports to /app/data
+  -> returns search results and export references to the client
 ```
 
 ### 2. Candidate submission and matching
 
-```mermaid
-sequenceDiagram
-    participant User as Candidate user / client
-    participant CAPI as Candidate API
-    participant DB as Database
-    participant FS as /app/data candidates
-    participant Worker as Candidate worker
+```text
+Candidate user / client
+  -> uploads CV and metadata to Candidate API
 
-    User->>CAPI: Upload CV + metadata
-    CAPI->>FS: Save original file
-    CAPI->>DB: Insert candidates + candidate_documents
-    CAPI->>DB: Insert candidate_tasks
-    CAPI-->>User: Accepted with task id
+Candidate API
+  -> saves the original file under /app/data
+  -> inserts candidates and candidate_documents
+  -> inserts candidate_tasks
+  -> returns an accepted response with a task id
 
-    Worker->>DB: Claim pending task
-    Worker->>FS: Read CV file
-    Worker->>DB: Save extracted text + candidate_profiles
-    Worker->>DB: Read jobs
-    Worker->>DB: Write job_matches
-    Worker->>DB: Mark task completed
+Candidate Worker
+  -> claims a pending task from candidate_tasks
+  -> reads the CV file from /app/data
+  -> extracts text and stores candidate_profiles
+  -> reads projected jobs from jobs
+  -> writes ranked results to job_matches
+  -> marks the task as completed
 ```
 
 ## Deployment Shape
