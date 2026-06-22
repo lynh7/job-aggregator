@@ -1,0 +1,26 @@
+services:
+  api:
+    build: .
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    env_file: .env
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
+  candidate-api:
+    build: .
+    command: ["uvicorn", "candidate_service.main:app", "--host", "0.0.0.0", "--port", "8100"]
+    env_file: .env
+    ports:
+      - "8100:8100"
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
+  candidate-worker:
+    build: .
+    command: ["candidate-worker"]
+    env_file: .env
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped

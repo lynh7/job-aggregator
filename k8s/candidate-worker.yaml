@@ -1,0 +1,28 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: candidate-worker
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: candidate-worker
+  template:
+    metadata:
+      labels:
+        app: candidate-worker
+    spec:
+      containers:
+        - name: candidate-worker
+          image: job-aggregator-backend:latest
+          command: ["candidate-worker"]
+          envFrom:
+            - secretRef:
+                name: job-aggregator-env
+          volumeMounts:
+            - name: data
+              mountPath: /app/data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: job-aggregator-data
