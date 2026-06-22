@@ -22,6 +22,7 @@ logic, or provider integration rules.
 - `k8s/`: per-service Kubernetes manifests.
 - `Helm.Base/`: reusable Helm chart and example value overrides.
 - `data/`: local SQLite database and export/output directories for development only.
+- `.codex/skills/job-aggregator-maintainer/references/cluster-deployment.md`: read when work touches Docker, Helm, Kubernetes, GitOps handoff, runtime topology, or production-readiness decisions.
 
 ## Working rules
 
@@ -31,9 +32,11 @@ logic, or provider integration rules.
 - The candidate API should remain stateless. Background work belongs in `candidate_service/worker.py`.
 - A standalone NATS app is present for future event-driven workflows, but the live candidate task flow still defaults to `QUEUE_BACKEND=database`.
 - For production concurrency assumptions, target PostgreSQL/Supabase, not SQLite.
+- All runtime images must support PostgreSQL deployments, not only local SQLite.
 - When changing service startup or deployment behavior, update both `compose.yaml` and the relevant files in `k8s/`.
 - When changing image layout, update the Dockerfiles in `docker/`, the Makefile build targets, and README build instructions together.
 - When changing deployment templates, keep `Helm.Base/templates/` generic and push service-specific differences into values files.
+- Prefer `job-aggregator` as the source of truth for app packaging and Helm defaults, and use the separate GitOps repo only for environment-specific deployment values and rollout objects.
 
 ## Common tasks
 
@@ -86,11 +89,14 @@ helm template nats ./Helm.Base -f ./Helm.Base/examples/nats.values.yaml
 
 ### Deployment changes
 
+- Read `references/cluster-deployment.md` before changing Dockerfiles, Helm packaging, `k8s/`, persistence, scaling, database wiring, or GitOps handoff.
 - Main job API image: `docker/job-api.Dockerfile`
 - Candidate API image: `docker/candidate-api.Dockerfile`
 - Candidate worker image: `docker/candidate-worker.Dockerfile`
 - Queue app: NATS with JetStream in compose and `k8s/nats.yaml`
 - Kubernetes manifests should reference service-specific image names, not one shared tag.
+- Current live worker flow is still database-backed, so do not make NATS mandatory unless you are actively migrating queue logic.
+- Candidate uploads and exports currently depend on filesystem paths under `/app/data`; treat replica count and PVC mode as part of the runtime contract until storage is redesigned.
 
 ## Validation expectations
 
