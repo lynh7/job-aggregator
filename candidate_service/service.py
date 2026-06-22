@@ -1,3 +1,4 @@
+import asyncio
 import shutil
 import uuid
 from pathlib import Path
@@ -8,8 +9,10 @@ from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
 
 from app.config import Settings
-from app.models import Candidate, CandidateDocument, CandidateProfile, JobMatch, RawJob
-from candidate_service.job_projection import project_raw_job
+from app.connectors.base import ProviderApplicationRequest
+from app.connectors.registry import build_providers
+from app.models import Candidate, CandidateDocument, CandidateProfile, Job, JobApplication, JobMatch
+from candidate_service.job_projection import project_master_job
 from candidate_service.matching import MATCH_RULE_VERSION, score_candidate_job
 from candidate_service.parsing import PARSER_VERSION, extract_document_text, parse_candidate_profile
 from candidate_service.task_queue import enqueue_candidate_task
@@ -125,7 +128,7 @@ def rematch_candidate(session: Session, settings: Settings, candidate_id: int, l
 
     projected_jobs = [
         projected
-        for projected in (project_raw_job(raw_job) for raw_job in session.scalars(select(RawJob)))
+        for projected in (project_master_job(job) for job in session.scalars(select(Job)))
         if projected is not None
     ]
     scored = sorted(
@@ -178,6 +181,109 @@ def enqueue_rematch(session: Session, candidate_id: int, limit: int | None = Non
     return task.id
 
 
+def enqueue_job_applications(session: Session, candidate_id: int, match_ids: list[int]) -> list[int]:
+    task_ids: list[int] = []
+    for match_id in match_ids:
+        match = session.get(JobMatch, match_id)
+        if match is None or match.candidate_id != candidate_id:
+            raise ValueError(f"Match {match_id} is not available for candidate {candidate_id}")
+
+        application = session.scalar(
+            select(JobApplication).where(
+                JobApplication.candidate_id == candidate_id,
+                JobApplication.match_id == match_id,
+            )
+        )
+        if application is None:
+            application = JobApplication(
+                candidate_id=candidate_id,
+                match_id=match.id,
+                provider=match.provider,
+                api_version=match.api_version,
+                job_source_record_id=match.job_source_record_id,
+                status="pending",
+            )
+            session.add(application)
+            session.commit()
+            session.refresh(application)
+        else:
+            application.status = "pending"
+            application.last_error = None
+            session.commit()
+
+        task = enqueue_candidate_task(
+            session,
+            task_type="apply_to_job",
+            candidate_id=candidate_id,
+            payload={"application_id": application.id},
+        )
+        task_ids.append(task.id)
+    return task_ids
+
+
+def process_job_application(session: Session, settings: Settings, application_id: int) -> None:
+    application = session.get(JobApplication, application_id)
+    if application is None:
+        raise ValueError("Application not found")
+
+    candidate = session.get(Candidate, application.candidate_id)
+    match = session.get(JobMatch, application.match_id)
+    if candidate is None or match is None:
+        raise ValueError("Application context is incomplete")
+
+    document = session.scalar(
+        select(CandidateDocument)
+        .where(CandidateDocument.candidate_id == candidate.id)
+        .order_by(CandidateDocument.created_at.desc())
+        .limit(1)
+    )
+    if document is None:
+        raise ValueError("Candidate document is missing")
+
+    providers = build_providers(settings)
+    provider = providers.get(application.provider)
+    if provider is None:
+        raise ValueError(f"Provider {application.provider} is not configured")
+
+    cv_path = Path(document.storage_path)
+    cv_bytes = cv_path.read_bytes()
+    request = ProviderApplicationRequest(
+        candidate_id=candidate.id,
+        full_name=candidate.full_name,
+        email=candidate.email,
+        phone=candidate.phone,
+        location=candidate.location,
+        cv_text=document.extracted_text,
+        cv_filename=document.filename,
+        cv_content_type=document.content_type,
+        cv_bytes=cv_bytes,
+        job_source_record_id=match.job_source_record_id,
+        job_url=match.job_url,
+    )
+
+    application.status = "processing"
+    application.document_id = document.id
+    session.commit()
+
+    try:
+        result = asyncio.run(provider.apply(request))
+    except Exception as exc:
+        session.rollback()
+        managed = session.get(JobApplication, application.id)
+        if managed is not None:
+            managed.mark_failed(str(exc))
+            session.commit()
+        raise
+
+    application = session.get(JobApplication, application.id)
+    assert application is not None
+    application.external_application_id = result.external_application_id
+    application.request_payload = result.request_payload
+    application.response_payload = result.response_payload
+    application.mark_submitted()
+    session.commit()
+
+
 def _validate_upload(upload: UploadFile) -> None:
     suffix = Path(upload.filename or "").suffix.lower()
     if suffix not in SUPPORTED_SUFFIXES:
@@ -196,4 +302,3 @@ def _derive_location(parsed: dict, text: str) -> str | None:
             if value:
                 return value
     return None
-

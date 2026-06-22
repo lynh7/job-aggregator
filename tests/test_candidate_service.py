@@ -6,8 +6,13 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.config import Settings
 from app.database import Base
-from app.models import Candidate, CandidateProfile, CandidateTask, JobMatch, RawJob
-from candidate_service.service import create_candidate_submission, process_candidate_submission
+from app.models import Candidate, CandidateTask, Job, JobApplication, JobMatch
+from candidate_service.service import (
+    create_candidate_submission,
+    enqueue_job_applications,
+    process_candidate_submission,
+    process_job_application,
+)
 from candidate_service.task_queue import claim_candidate_task, enqueue_candidate_task
 
 
@@ -31,21 +36,23 @@ def build_session(tmp_path: Path) -> tuple[Session, Settings]:
     return session_factory(), settings
 
 
-def test_candidate_submission_creates_profile_and_matches(tmp_path):
+def test_candidate_submission_creates_profile_matches_and_application(tmp_path):
     session, settings = build_session(tmp_path)
     session.add(
-        RawJob(
+        Job(
             provider="mock",
             api_version="v1",
             source_record_id="job-1",
-            rule_version="raw-v1",
-            payload={
-                "title": "Python Backend Engineer",
-                "company": "Example Co",
-                "location": "Remote",
-                "description": "Need python docker kubernetes and sql with 3 years experience",
-                "url": "https://example.com/jobs/job-1",
-            },
+            external_id="job-1",
+            title="Python Backend Engineer",
+            company="Example Co",
+            location="Remote",
+            description="Need python docker kubernetes and sql with 3 years experience",
+            employment_type="Full-time",
+            salary_text=None,
+            url="https://example.com/jobs/job-1",
+            rule_version="master-v1",
+            normalization_status="normalized",
         )
     )
     session.commit()
@@ -64,7 +71,7 @@ def test_candidate_submission_creates_profile_and_matches(tmp_path):
                 ]
             ),
         ),
-        {"full_name": "Alex Example", "location": "Remote"},
+        {"full_name": "Alex Example", "location": "Remote", "email": "alex@example.com"},
     )
 
     assert task_id > 0
@@ -74,14 +81,22 @@ def test_candidate_submission_creates_profile_and_matches(tmp_path):
     assert stored_candidate is not None
     assert stored_candidate.status == "matched"
 
-    profile = session.scalar(select(CandidateProfile).where(CandidateProfile.candidate_id == candidate.id))
-    assert profile is not None
-    assert "python" in profile.skills
-
     matches = list(session.scalars(select(JobMatch).where(JobMatch.candidate_id == candidate.id)))
     assert len(matches) == 1
     assert matches[0].match_score > 0
     assert "python" in matches[0].matched_skills
+
+    task_ids = enqueue_job_applications(session, candidate.id, [matches[0].id])
+    assert len(task_ids) == 1
+
+    application = session.scalar(select(JobApplication).where(JobApplication.candidate_id == candidate.id))
+    assert application is not None
+    process_job_application(session, settings, application.id)
+
+    submitted = session.get(JobApplication, application.id)
+    assert submitted is not None
+    assert submitted.status == "submitted"
+    assert submitted.external_application_id == f"mock-{matches[0].job_source_record_id}-{candidate.id}"
 
 
 def test_candidate_tasks_can_be_claimed_by_parallel_workers(tmp_path):

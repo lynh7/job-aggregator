@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.database import Base, SessionLocal, engine
 from app.models import Candidate
-from candidate_service.service import process_candidate_submission, rematch_candidate
+from candidate_service.service import enqueue_rematch, process_candidate_submission, process_job_application, rematch_candidate
 from candidate_service.task_queue import claim_candidate_task, complete_candidate_task, fail_candidate_task
 
 
@@ -27,6 +27,9 @@ def process_one_task(session: Session, worker_id: str) -> bool:
             rematch_candidate(session, settings, candidate.id, task.payload.get("limit"))
             candidate.status = "matched"
             session.commit()
+        elif task.task_type == "apply_to_job":
+            application_id = int(task.payload["application_id"])
+            process_job_application(session, settings, application_id)
         else:
             raise ValueError(f"Unsupported task type: {task.task_type}")
         complete_candidate_task(session, task)

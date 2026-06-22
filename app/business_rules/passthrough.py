@@ -1,9 +1,10 @@
 from app.business_rules.base import ProviderBusinessRules, RuleResult
+from app.business_rules.normalization import build_standard_job
 from app.schemas import RawJobRecord
 
 
 class PassThroughRules(ProviderBusinessRules):
-    rule_version = "raw-v1"
+    rule_version = "master-v1"
 
     def __init__(self, provider: str, api_version: str) -> None:
         self.provider = provider
@@ -15,5 +16,4 @@ class PassThroughRules(ProviderBusinessRules):
                 f"Rules for {self.provider}/{self.api_version} cannot process "
                 f"{raw.provider}/{raw.api_version}"
             )
-        return RuleResult(raw=raw, rule_version=self.rule_version)
-
+        return RuleResult(raw=raw, rule_version=self.rule_version, standard=build_standard_job(raw))

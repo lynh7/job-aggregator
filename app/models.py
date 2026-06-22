@@ -1,5 +1,4 @@
-from datetime import datetime
-
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint, func
@@ -10,10 +9,15 @@ from app.database import Base
 
 class Job(Base):
     __tablename__ = "jobs"
-    __table_args__ = (UniqueConstraint("provider", "external_id", name="uq_job_provider_id"),)
+    __table_args__ = (
+        UniqueConstraint("provider", "api_version", "source_record_id", name="uq_job_provider_version_id"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     provider: Mapped[str] = mapped_column(String(50), index=True)
+    api_version: Mapped[str] = mapped_column(String(50), index=True)
+    source_record_id: Mapped[str] = mapped_column(String(255))
+    raw_job_id: Mapped[int | None] = mapped_column(ForeignKey("raw_jobs.id"), index=True)
     external_id: Mapped[str] = mapped_column(String(255))
     title: Mapped[str] = mapped_column(String(500), index=True)
     company: Mapped[str | None] = mapped_column(String(500))
@@ -23,8 +27,14 @@ class Job(Base):
     salary_text: Mapped[str | None] = mapped_column(String(255))
     url: Mapped[str] = mapped_column(Text)
     posted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    fetched_at: Mapped[datetime] = mapped_column(
+    rule_version: Mapped[str] = mapped_column(String(50))
+    normalization_status: Mapped[str] = mapped_column(String(50), default="normalized", index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+    last_seen_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), index=True
     )
 
 
@@ -143,3 +153,37 @@ class JobMatch(Base):
     missing_skills: Mapped[list[str]] = mapped_column(JSON, default=list)
     rule_version: Mapped[str] = mapped_column(String(50))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class JobApplication(Base):
+    __tablename__ = "job_applications"
+    __table_args__ = (
+        UniqueConstraint("candidate_id", "match_id", name="uq_candidate_match_application"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    candidate_id: Mapped[int] = mapped_column(ForeignKey("candidates.id"), index=True)
+    match_id: Mapped[int] = mapped_column(ForeignKey("job_matches.id"), index=True)
+    document_id: Mapped[int | None] = mapped_column(ForeignKey("candidate_documents.id"), index=True)
+    provider: Mapped[str] = mapped_column(String(50), index=True)
+    api_version: Mapped[str] = mapped_column(String(50))
+    job_source_record_id: Mapped[str] = mapped_column(String(255))
+    status: Mapped[str] = mapped_column(String(50), default="pending", index=True)
+    external_application_id: Mapped[str | None] = mapped_column(String(255))
+    request_payload: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    response_payload: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    last_error: Mapped[str | None] = mapped_column(Text)
+    applied_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    def mark_submitted(self) -> None:
+        self.status = "submitted"
+        self.applied_at = datetime.now(UTC)
+        self.last_error = None
+
+    def mark_failed(self, error: str) -> None:
+        self.status = "failed"
+        self.last_error = error[:2000]

@@ -4,8 +4,11 @@ from sqlalchemy.orm import Session
 
 from app.config import Settings, get_settings
 from app.database import get_db
-from app.models import Candidate, CandidateProfile, CandidateTask, JobMatch
+from app.models import Candidate, CandidateProfile, CandidateTask, JobApplication, JobMatch
 from candidate_service.schemas import (
+    CandidateApplicationResponse,
+    CandidateApplyRequest,
+    CandidateApplyResponse,
     CandidateCreateResponse,
     CandidateDetailResponse,
     CandidateMatchResponse,
@@ -15,7 +18,7 @@ from candidate_service.schemas import (
     CandidateSubmissionMetadata,
     CandidateTaskResponse,
 )
-from candidate_service.service import create_candidate_submission, enqueue_rematch
+from candidate_service.service import create_candidate_submission, enqueue_job_applications, enqueue_rematch
 
 router = APIRouter()
 
@@ -110,9 +113,35 @@ def rematch_candidate(
     return CandidateTaskResponse.model_validate(task)
 
 
+@router.post("/candidates/{candidate_id}/apply", response_model=CandidateApplyResponse, status_code=202)
+def apply_to_jobs(
+    candidate_id: int,
+    request: CandidateApplyRequest,
+    session: Session = Depends(get_db),
+) -> CandidateApplyResponse:
+    candidate = session.get(Candidate, candidate_id)
+    if candidate is None:
+        raise HTTPException(status_code=404, detail="Candidate not found")
+    try:
+        task_ids = enqueue_job_applications(session, candidate_id, request.match_ids)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return CandidateApplyResponse(queued=len(task_ids), task_ids=task_ids)
+
+
+@router.get("/candidates/{candidate_id}/applications", response_model=list[CandidateApplicationResponse])
+def list_candidate_applications(candidate_id: int, session: Session = Depends(get_db)) -> list[JobApplication]:
+    return list(
+        session.scalars(
+            select(JobApplication)
+            .where(JobApplication.candidate_id == candidate_id)
+            .order_by(JobApplication.created_at.desc())
+        )
+    )
+
+
 @router.get("/tasks", response_model=list[CandidateTaskResponse])
 def list_tasks(limit: int = 100, session: Session = Depends(get_db)) -> list[CandidateTask]:
     return list(
         session.scalars(select(CandidateTask).order_by(CandidateTask.created_at.desc()).limit(min(limit, 500)))
     )
-

@@ -5,8 +5,8 @@ from app.business_rules.registry import build_business_rules_registry
 from app.config import get_settings
 from app.connectors.registry import build_providers
 from app.database import Base, SessionLocal, engine
-from app.schemas import RawJobResponse
-from app.services.collector import apply_business_rules, collect_jobs, store_raw_jobs
+from app.schemas import JobResponse
+from app.services.collector import apply_business_rules, collect_jobs, store_master_jobs, store_raw_jobs
 from app.services.exporter import export_jobs
 
 
@@ -40,10 +40,12 @@ def main() -> None:
     )
     with SessionLocal() as session:
         results = apply_business_rules(build_business_rules_registry(), jobs)
-        stored = store_raw_jobs(session, results)
-        responses = [RawJobResponse.model_validate(job) for job in stored]
+        stored_raw = store_raw_jobs(session, results)
+        stored_master = store_master_jobs(session, results, stored_raw)
+        responses = [JobResponse.model_validate(job) for job in stored_master]
     json_path, xlsx_path = export_jobs(responses, settings.export_dir)
     print(f"Fetched: {len(jobs)}")
+    print(f"Stored master jobs: {len(stored_master)}")
     print(f"JSON: {json_path}")
     print(f"XLSX: {xlsx_path}")
 

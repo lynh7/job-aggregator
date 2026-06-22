@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class CandidateCreateResponse(BaseModel):
@@ -75,6 +75,35 @@ class CandidateTaskResponse(BaseModel):
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class CandidateApplicationResponse(BaseModel):
+    id: int
+    candidate_id: int
+    match_id: int
+    document_id: int | None
+    provider: str
+    api_version: str
+    job_source_record_id: str
+    status: str
+    external_application_id: str | None
+    request_payload: dict
+    response_payload: dict
+    last_error: str | None
+    applied_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class CandidateApplyRequest(BaseModel):
+    match_ids: list[int] = Field(min_length=1)
+
+
+class CandidateApplyResponse(BaseModel):
+    queued: int
+    task_ids: list[int]
 
 
 class CandidateDetailResponse(BaseModel):

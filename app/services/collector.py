@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from app.business_rules.base import RuleResult
 from app.business_rules.registry import BusinessRulesRegistry
 from app.connectors.base import JobProvider
-from app.models import RawJob
+from app.models import Job, RawJob
 from app.schemas import RawJobRecord
 
 
@@ -58,10 +58,7 @@ def store_raw_jobs(session: Session, results: list[RuleResult]) -> list[RawJob]:
             else:
                 session.add(RawJob(**values))
     session.commit()
-    keys = [
-        (result.raw.provider, result.raw.api_version, result.raw.source_record_id)
-        for result in results
-    ]
+    keys = [_raw_key(result.raw.provider, result.raw.api_version, result.raw.source_record_id) for result in results]
     return list(
         session.scalars(
             select(RawJob).where(
@@ -73,3 +70,72 @@ def store_raw_jobs(session: Session, results: list[RuleResult]) -> list[RawJob]:
             )
         )
     ) if keys else []
+
+
+def store_master_jobs(session: Session, results: list[RuleResult], raw_jobs: list[RawJob]) -> list[Job]:
+    raw_index = {
+        _raw_key(raw.provider, raw.api_version, raw.source_record_id): raw
+        for raw in raw_jobs
+    }
+    master_keys: list[tuple[str, str, str]] = []
+
+    for result in results:
+        if result.standard is None:
+            continue
+
+        raw = raw_index.get(_raw_key(result.raw.provider, result.raw.api_version, result.raw.source_record_id))
+        values = result.standard.model_dump()
+        values.update(
+            {
+                "api_version": result.raw.api_version,
+                "source_record_id": result.raw.source_record_id,
+                "raw_job_id": raw.id if raw is not None else None,
+                "rule_version": result.rule_version,
+                "normalization_status": "normalized",
+                "last_seen_at": raw.fetched_at if raw is not None else result.raw.fetched_at,
+            }
+        )
+        master_key = _raw_key(result.raw.provider, result.raw.api_version, result.raw.source_record_id)
+        master_keys.append(master_key)
+
+        if session.bind is not None and session.bind.dialect.name == "sqlite":
+            statement = sqlite_insert(Job).values(**values)
+            statement = statement.on_conflict_do_update(
+                index_elements=["provider", "api_version", "source_record_id"],
+                set_={
+                    key: value
+                    for key, value in values.items()
+                    if key not in {"provider", "api_version", "source_record_id"}
+                },
+            )
+            session.execute(statement)
+        else:
+            existing = session.scalar(
+                select(Job).where(
+                    Job.provider == result.raw.provider,
+                    Job.api_version == result.raw.api_version,
+                    Job.source_record_id == result.raw.source_record_id,
+                )
+            )
+            if existing:
+                for key, value in values.items():
+                    setattr(existing, key, value)
+            else:
+                session.add(Job(**values))
+
+    session.commit()
+    return list(
+        session.scalars(
+            select(Job).where(
+                tuple_(
+                    Job.provider,
+                    Job.api_version,
+                    Job.source_record_id,
+                ).in_(master_keys)
+            )
+        )
+    ) if master_keys else []
+
+
+def _raw_key(provider: str, api_version: str, source_record_id: str) -> tuple[str, str, str]:
+    return (provider, api_version, source_record_id)

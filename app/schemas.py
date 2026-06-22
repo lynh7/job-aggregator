@@ -26,7 +26,14 @@ class JobRecord(BaseModel):
 
 class JobResponse(JobRecord):
     id: int
-    fetched_at: datetime
+    api_version: str
+    source_record_id: str
+    raw_job_id: int | None
+    rule_version: str
+    normalization_status: str
+    created_at: datetime
+    updated_at: datetime
+    last_seen_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
 

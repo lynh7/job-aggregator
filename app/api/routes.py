@@ -11,7 +11,7 @@ from app.connectors.registry import build_providers
 from app.database import get_db
 from app.models import Job, RawJob
 from app.schemas import JobResponse, RawJobResponse, SearchRequest, SearchResponse
-from app.services.collector import apply_business_rules, collect_jobs, store_raw_jobs
+from app.services.collector import apply_business_rules, collect_jobs, store_master_jobs, store_raw_jobs
 from app.services.exporter import export_jobs
 
 router = APIRouter()
@@ -24,7 +24,7 @@ def health() -> dict[str, str]:
 
 @router.get("/jobs", response_model=list[JobResponse])
 def list_jobs(limit: int = 100, session: Session = Depends(get_db)) -> list[Job]:
-    return list(session.scalars(select(Job).order_by(Job.fetched_at.desc()).limit(min(limit, 500))))
+    return list(session.scalars(select(Job).order_by(Job.last_seen_at.desc()).limit(min(limit, 500))))
 
 
 @router.get("/raw-jobs", response_model=list[RawJobResponse])
@@ -58,12 +58,13 @@ async def search_jobs(
         providers, request.keywords, request.location, request.limit_per_provider
     )
     results = apply_business_rules(build_business_rules_registry(), fetched)
-    stored = store_raw_jobs(session, results)
-    responses = [RawJobResponse.model_validate(job) for job in stored]
+    stored_raw = store_raw_jobs(session, results)
+    stored_master = store_master_jobs(session, results, stored_raw)
+    responses = [JobResponse.model_validate(job) for job in stored_master]
     json_path, xlsx_path = export_jobs(responses, settings.export_dir)
     return SearchResponse(
         fetched=len(fetched),
-        stored=len(stored),
+        stored=len(stored_master),
         providers=requested,
         json_export=str(json_path),
         xlsx_export=str(xlsx_path),
