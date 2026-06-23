@@ -59,6 +59,15 @@ make build-candidate-api
 make build-candidate-worker
 ```
 
+### Render Helm workloads
+
+```bash
+helm template job-api ./Helm.Base -f ./Helm.Base/examples/job-api.values.yaml
+helm template crawler-api ./Helm.Base -f ./Helm.Base/examples/crawler-api.values.yaml
+helm template candidate-api ./Helm.Base -f ./Helm.Base/examples/candidate-api.values.yaml
+helm template candidate-worker ./Helm.Base -f ./Helm.Base/examples/candidate-worker.values.yaml
+```
+
 ## Change guidance
 
 ### Crawler changes

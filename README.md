@@ -136,3 +136,19 @@ make build-candidate-api
 make build-candidate-worker
 make build-crawler-api
 ```
+
+## Helm examples
+
+Render each workload from the shared chart:
+
+```bash
+helm template job-api ./Helm.Base -f ./Helm.Base/examples/job-api.values.yaml
+helm template crawler-api ./Helm.Base -f ./Helm.Base/examples/crawler-api.values.yaml
+helm template candidate-api ./Helm.Base -f ./Helm.Base/examples/candidate-api.values.yaml
+helm template candidate-worker ./Helm.Base -f ./Helm.Base/examples/candidate-worker.values.yaml
+```
+
+Recommended GitOps split:
+
+- this repo owns chart structure and example workload values
+- `home-server/applications` owns environment-specific overrides such as image tags, secrets, replicas, ingress, and storage class

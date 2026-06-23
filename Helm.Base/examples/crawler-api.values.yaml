@@ -1,0 +1,30 @@
+fullnameOverride: crawler-api
+replicaCount: 1
+image:
+  repository: job-aggregator-crawler-api
+  tag: latest
+containerPorts:
+  - name: http
+    containerPort: 8200
+service:
+  enabled: true
+  port: 8200
+  targetPort: 8200
+envFrom:
+  - secretRef:
+      name: job-aggregator-env
+resources:
+  requests:
+    cpu: 500m
+    memory: 1Gi
+  limits:
+    cpu: "2"
+    memory: 2Gi
+readinessProbe:
+  httpGet:
+    path: /api/v1/health
+    port: 8200
+livenessProbe:
+  httpGet:
+    path: /api/v1/health
+    port: 8200
