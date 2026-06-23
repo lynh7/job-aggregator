@@ -1,8 +1,10 @@
 from abc import ABC, abstractmethod
+from contextlib import asynccontextmanager
 from hashlib import sha1
+from typing import Any, AsyncIterator
 from urllib.parse import urlsplit, urlunsplit
 
-from crawl4ai import AsyncWebCrawler, BrowserConfig, CacheMode, CrawlerRunConfig
+import httpx
 
 from app.schemas import RawJobRecord
 from crawler_service.config import CrawlerSettings
@@ -21,7 +23,40 @@ class JobCrawler(ABC):
     ) -> list[RawJobRecord]:
         """Return raw source records for this provider."""
 
-    def build_browser_config(self) -> BrowserConfig:
+    @asynccontextmanager
+    async def open_session(self) -> AsyncIterator[Any]:
+        if self.settings.crawl_backend == "crawl4ai":
+            try:
+                from crawl4ai import AsyncWebCrawler  # type: ignore
+            except ImportError as exc:
+                raise RuntimeError(
+                    "crawl4ai backend selected but crawl4ai is not installed; "
+                    "use the browser crawler image or switch CRAWL_BACKEND=http"
+                ) from exc
+            async with AsyncWebCrawler(config=self.build_browser_config()) as crawler:
+                yield crawler
+            return
+
+        headers = {
+            "User-Agent": self.settings.crawl_user_agent,
+            "Accept-Language": "en-US,en;q=0.9,vi;q=0.8",
+        }
+        async with httpx.AsyncClient(
+            timeout=self.settings.request_timeout_seconds,
+            headers=headers,
+            follow_redirects=True,
+        ) as client:
+            yield client
+
+    def build_browser_config(self) -> Any:
+        if self.settings.crawl_backend != "crawl4ai":
+            return None
+        try:
+            from crawl4ai import BrowserConfig  # type: ignore
+        except ImportError as exc:
+            raise RuntimeError(
+                "crawl4ai backend selected but crawl4ai is not installed"
+            ) from exc
         return BrowserConfig(
             browser_type=self.settings.crawl_browser_type,
             headless=self.settings.crawl_headless,
@@ -29,7 +64,15 @@ class JobCrawler(ABC):
             text_mode=self.settings.crawl_text_mode,
         )
 
-    def build_run_config(self, *, wait_for: str | None = None) -> CrawlerRunConfig:
+    def build_run_config(self, *, wait_for: str | None = None) -> Any:
+        if self.settings.crawl_backend != "crawl4ai":
+            return None
+        try:
+            from crawl4ai import CacheMode, CrawlerRunConfig  # type: ignore
+        except ImportError as exc:
+            raise RuntimeError(
+                "crawl4ai backend selected but crawl4ai is not installed"
+            ) from exc
         return CrawlerRunConfig(
             cache_mode=CacheMode.BYPASS,
             wait_for=wait_for,
@@ -40,16 +83,21 @@ class JobCrawler(ABC):
 
     async def fetch_html(
         self,
-        crawler: AsyncWebCrawler,
+        session: Any,
         url: str,
         *,
         wait_for: str | None = None,
     ) -> str:
-        result = await crawler.arun(url=url, config=self.build_run_config(wait_for=wait_for))
-        if not result.success:
-            message = result.error_message or f"crawl failed for {url}"
-            raise ValueError(message)
-        return result.cleaned_html or result.html or ""
+        if self.settings.crawl_backend == "crawl4ai":
+            result = await session.arun(url=url, config=self.build_run_config(wait_for=wait_for))
+            if not result.success:
+                message = result.error_message or f"crawl failed for {url}"
+                raise ValueError(message)
+            return result.cleaned_html or result.html or ""
+
+        response = await session.get(url)
+        response.raise_for_status()
+        return response.text
 
     def build_record(self, payload: dict[str, str | None], url: str) -> RawJobRecord:
         return RawJobRecord(
@@ -63,7 +111,6 @@ class JobCrawler(ABC):
 def canonical_url(url: str) -> str:
     split = urlsplit(url)
     return urlunsplit((split.scheme, split.netloc, split.path, "", ""))
-
 
 
 def stable_source_id(provider: str, url: str) -> str:

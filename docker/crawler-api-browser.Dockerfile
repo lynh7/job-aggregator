@@ -8,7 +8,7 @@ COPY pyproject.toml README.md ./
 COPY app ./app
 COPY candidate_service ./candidate_service
 COPY crawler_service ./crawler_service
-RUN pip install --no-cache-dir '.[crawler-light]'
+RUN pip install --no-cache-dir '.[crawler-browser]'     && python -m playwright install --with-deps chromium
 
 EXPOSE 8200
 CMD ["uvicorn", "crawler_service.main:app", "--host", "0.0.0.0", "--port", "8200"]

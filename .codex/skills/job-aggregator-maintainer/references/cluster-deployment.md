@@ -56,18 +56,27 @@ Required env wiring for crawler:
 - `INGEST_API_TOKEN=<shared token>` if enabled
 - `CRAWLER_ENABLED_PROVIDERS=topcv,itviec`
 
-Required image/runtime facts:
+Crawler image/runtime options:
 
-- `docker/crawler-api.Dockerfile` installs `crawl4ai` and Playwright Chromium.
-- The crawler image is heavier than the core API image.
-- Browser workloads need explicit CPU and memory requests in cluster values.
+- lightweight image: `docker/crawler-api.Dockerfile`
+  - backend: `CRAWL_BACKEND=http`
+  - lower CPU and memory
+  - preferred first POC deploy when pages are server-rendered enough
+- browser image: `docker/crawler-api-browser.Dockerfile`
+  - backend: `CRAWL_BACKEND=crawl4ai`
+  - installs Playwright Chromium
+  - use when lightweight fetches miss data or sites require browser execution
 
-Recommended first-pass requests/limits for crawler:
+Recommended first-pass requests/limits:
 
-- requests: `cpu: 500m`, `memory: 1Gi`
-- limits: `cpu: 2`, `memory: 2Gi`
+- lightweight crawler
+  - requests: `cpu: 250m`, `memory: 256Mi`
+  - limits: `cpu: 1`, `memory: 512Mi`
+- browser crawler
+  - requests: `cpu: 500m`, `memory: 1Gi`
+  - limits: `cpu: 2`, `memory: 2Gi`
 
-Adjust after measuring real crawl volume and browser concurrency.
+Adjust after measuring real crawl volume and selector stability.
 
 ## Persistence and scaling constraints
 

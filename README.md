@@ -7,7 +7,7 @@ response, applying versioned business rules, and exporting JSON/XLSX files.
 
 - Python 3.12 and FastAPI
 - Separate core API and crawler API
-- Crawl4AI-backed browser crawling for TopCV and ITViec
+- Toggleable crawler backend: lightweight `httpx + BeautifulSoup` or browser `crawl4ai`
 - Pluggable provider adapters and business rules
 - Unmodified raw provider payloads
 - Central business-rules registry by provider and API version
@@ -73,8 +73,13 @@ crawler-api /api/v1/crawl -> core-api /api/v1/ingest/raw-jobs
 
 ## Crawler API
 
-The crawler service is a separate deployment and image.
-It uses `crawl4ai` with Playwright/Chromium, then sends raw provider records to the core API.
+The crawler service is a separate deployment.
+It can run in two modes:
+
+- lightweight `httpx + BeautifulSoup`
+- browser `crawl4ai + Playwright/Chromium`
+
+Both modes send raw provider records to the core API.
 
 Current crawler-backed providers:
 
@@ -90,6 +95,9 @@ make install
 make crawler-dev
 ```
 
+Default local install uses the lightweight backend.
+Set `CRAWL_BACKEND=crawl4ai` only when the browser image/runtime is available.
+
 Example crawl:
 
 ```bash
@@ -101,11 +109,21 @@ curl -X POST http://localhost:8200/api/v1/crawl   -H 'content-type: application/
   }'
 ```
 
-Important runtime note:
+Crawler backend options:
 
-- `crawl4ai` requires Playwright browser binaries
-- the crawler Docker image installs Chromium during build
-- local dev install now uses `.[dev,crawler]`
+- `CRAWL_BACKEND=http`
+  - uses `httpx + BeautifulSoup`
+  - lighter image and lower memory usage
+  - works only when listing/detail pages contain enough server-rendered HTML
+- `CRAWL_BACKEND=crawl4ai`
+  - uses browser automation through `crawl4ai`
+  - heavier image, higher CPU/memory
+  - better when pages are JS-rendered or anti-bot behavior blocks plain HTTP fetches
+
+Docker images:
+
+- `docker/crawler-api.Dockerfile` -> lightweight image
+- `docker/crawler-api-browser.Dockerfile` -> browser image
 
 ## Candidate matching service
 
@@ -127,6 +145,7 @@ Endpoints:
 - `docker/candidate-api.Dockerfile` -> `job-aggregator-candidate-api:latest`
 - `docker/candidate-worker.Dockerfile` -> `job-aggregator-candidate-worker:latest`
 - `docker/crawler-api.Dockerfile` -> `job-aggregator-crawler-api:latest`
+- `docker/crawler-api-browser.Dockerfile` -> `job-aggregator-crawler-api-browser:latest`
 
 Build commands:
 
@@ -135,6 +154,7 @@ make build-job-api
 make build-candidate-api
 make build-candidate-worker
 make build-crawler-api
+make build-crawler-api-browser
 ```
 
 ## Helm examples
@@ -144,6 +164,7 @@ Render each workload from the shared chart:
 ```bash
 helm template job-api ./Helm.Base -f ./Helm.Base/examples/job-api.values.yaml
 helm template crawler-api ./Helm.Base -f ./Helm.Base/examples/crawler-api.values.yaml
+helm template crawler-api ./Helm.Base -f ./Helm.Base/examples/crawler-api-browser.values.yaml
 helm template candidate-api ./Helm.Base -f ./Helm.Base/examples/candidate-api.values.yaml
 helm template candidate-worker ./Helm.Base -f ./Helm.Base/examples/candidate-worker.values.yaml
 ```

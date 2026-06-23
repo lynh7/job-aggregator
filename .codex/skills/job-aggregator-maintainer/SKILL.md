@@ -23,6 +23,7 @@ deployment packaging, or operational behavior.
 
 - Keep `raw_jobs.payload` unchanged. Provider interpretation belongs in `app/business_rules/`.
 - The crawler is a separate service. It should crawl source pages and send raw records to `POST /api/v1/ingest/raw-jobs` on the core API.
+- The crawler backend is deployment-selectable: lightweight `http` or browser `crawl4ai`.
 - Keep the core API authoritative for normalization, master-data persistence, and JSON/XLSX export generation.
 - Provider-specific crawling belongs in `crawler_service/crawlers/`.
 - Provider-specific normalization belongs in `app/business_rules/providers/`.
@@ -55,6 +56,7 @@ make candidate-worker
 ```bash
 make build-job-api
 make build-crawler-api
+make build-crawler-api-browser
 make build-candidate-api
 make build-candidate-worker
 ```
@@ -64,6 +66,7 @@ make build-candidate-worker
 ```bash
 helm template job-api ./Helm.Base -f ./Helm.Base/examples/job-api.values.yaml
 helm template crawler-api ./Helm.Base -f ./Helm.Base/examples/crawler-api.values.yaml
+helm template crawler-api ./Helm.Base -f ./Helm.Base/examples/crawler-api-browser.values.yaml
 helm template candidate-api ./Helm.Base -f ./Helm.Base/examples/candidate-api.values.yaml
 helm template candidate-worker ./Helm.Base -f ./Helm.Base/examples/candidate-worker.values.yaml
 ```

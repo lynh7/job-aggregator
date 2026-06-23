@@ -1,7 +1,7 @@
 fullnameOverride: crawler-api
 replicaCount: 1
 image:
-  repository: job-aggregator-crawler-api
+  repository: job-aggregator-crawler-api-browser
   tag: latest
 containerPorts:
   - name: http
@@ -12,17 +12,17 @@ service:
   targetPort: 8200
 env:
   - name: CRAWL_BACKEND
-    value: http
+    value: crawl4ai
 envFrom:
   - secretRef:
       name: job-aggregator-env
 resources:
   requests:
-    cpu: 250m
-    memory: 256Mi
+    cpu: 500m
+    memory: 1Gi
   limits:
-    cpu: "1"
-    memory: 512Mi
+    cpu: "2"
+    memory: 2Gi
 readinessProbe:
   httpGet:
     path: /api/v1/health

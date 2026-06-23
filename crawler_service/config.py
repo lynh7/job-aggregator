@@ -6,6 +6,11 @@ from app.config import Settings
 class CrawlerSettings(Settings):
     crawler_enabled_providers: str = "topcv,itviec"
     crawler_push_exports: bool = False
+    crawl_backend: str = "http"
+    crawl_user_agent: str = (
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+    )
     topcv_search_url_template: str = "https://www.topcv.vn/tim-viec-lam-{keyword_slug}"
     itviec_search_url_template: str = "https://itviec.com/it-jobs/{keyword_slug}"
     crawl_browser_type: str = "chromium"

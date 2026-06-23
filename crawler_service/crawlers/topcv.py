@@ -1,5 +1,4 @@
 from bs4 import Tag
-from crawl4ai import AsyncWebCrawler
 
 from app.schemas import RawJobRecord
 from crawler_service.crawlers.base import JobCrawler
@@ -21,16 +20,16 @@ class TopCVCrawler(JobCrawler):
         records: list[RawJobRecord] = []
         seen_urls: set[str] = set()
 
-        async with AsyncWebCrawler(config=self.build_browser_config()) as crawler:
+        async with self.open_session() as session:
             for listing_url in urls:
-                html = await self.fetch_html(crawler, listing_url, wait_for="div.job-item-search-result")
+                html = await self.fetch_html(session, listing_url, wait_for="div.job-item-search-result")
                 for card in html_soup(html).select("div.job-item-search-result"):
                     payload = self._extract_listing(card)
                     job_url = normalize_job_url(payload.get("job_url"))
                     if not job_url or job_url in seen_urls:
                         continue
                     seen_urls.add(job_url)
-                    detail_html = await self.fetch_html(crawler, job_url, wait_for="body")
+                    detail_html = await self.fetch_html(session, job_url, wait_for="body")
                     payload.update(self._extract_detail(detail_html, job_url))
                     payload["job_url"] = job_url
                     payload["apply_url"] = job_url

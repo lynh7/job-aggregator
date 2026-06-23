@@ -22,7 +22,10 @@ dependencies = [
 
 [project.optional-dependencies]
 postgres = ["psycopg[binary]>=3.2,<4"]
-crawler = [
+crawler-light = [
+  "beautifulsoup4>=4.12,<5",
+]
+crawler-browser = [
   "beautifulsoup4>=4.12,<5",
   "crawl4ai>=0.9,<1",
 ]

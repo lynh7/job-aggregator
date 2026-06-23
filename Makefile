@@ -1,8 +1,8 @@
-.PHONY: install dev crawler-dev test lint search candidate-dev candidate-worker build-job-api build-candidate-api build-candidate-worker build-crawler-api build-agent build-agent-daemon
+.PHONY: install dev crawler-dev test lint search candidate-dev candidate-worker build-job-api build-candidate-api build-candidate-worker build-crawler-api build-crawler-api-browser build-agent build-agent-daemon
 
 install:
 	python3 -m venv .venv
-	.venv/bin/pip install -e ".[dev,crawler]"
+	.venv/bin/pip install -e ".[dev,crawler-light]"
 
 dev:
 	.venv/bin/uvicorn app.main:app --reload
@@ -27,6 +27,9 @@ build-candidate-worker:
 
 build-crawler-api:
 	docker build -f docker/crawler-api.Dockerfile -t job-aggregator-crawler-api:latest .
+
+build-crawler-api-browser:
+	docker build -f docker/crawler-api-browser.Dockerfile -t job-aggregator-crawler-api-browser:latest .
 
 test:
 	.venv/bin/pytest
