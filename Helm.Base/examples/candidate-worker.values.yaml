@@ -2,7 +2,7 @@ fullnameOverride: candidate-worker
 replicaCount: 2
 image:
   repository: job-aggregator-candidate-worker
-  tag: latest
+  tag: replace-with-git-sha
 envFrom:
   - secretRef:
       name: job-aggregator-env

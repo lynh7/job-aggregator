@@ -14,7 +14,7 @@ spec:
     spec:
       containers:
         - name: candidate-api
-          image: job-aggregator-candidate-api:latest
+          image: job-aggregator-candidate-api:replace-with-git-sha
           ports:
             - containerPort: 8100
           envFrom:

@@ -25,10 +25,19 @@ Read this file when work touches:
 
 Recommended split:
 
-- `job-aggregator` repo owns app code, Dockerfiles, image build logic, Helm chart structure, chart defaults, ports, probes, env variable names, and service topology.
-- GitOps repo owns environment-specific values: image tags, replica counts, ingress hosts, secret references, storage class, resource sizing, and rollout objects.
+- `job-aggregator` repo owns app code, Dockerfiles, Cloud Build config, GitHub workflow logic, Helm chart structure, chart defaults, ports, probes, env variable names, and service topology.
+- GitOps repo owns environment-specific values: immutable image tags, replica counts, ingress hosts, secret references, storage class, resource sizing, and rollout objects.
 
 Use raw `k8s/` manifests as reference. Use Helm or the GitOps repo as deployment source of truth.
+
+## Current CI/CD path
+
+- GitHub Actions triggers only on `push` to `main` and `workflow_dispatch`.
+- Workflow runner target: private self-hosted runner with labels `self-hosted,raspberry-pi`.
+- The Raspberry Pi runner must not build Docker images locally. It only authenticates to GCP and runs `gcloud builds submit`.
+- Google Cloud Build performs the Docker build and pushes GHCR tags.
+- `cloudbuild.yaml` logs in to GHCR using Secret Manager secret `ghcr-token`.
+- Kubernetes-facing values should pin immutable Git SHA tags, not rely on `latest`.
 
 ## Recommended crawler topology
 

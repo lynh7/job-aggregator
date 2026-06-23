@@ -1,0 +1,5 @@
+project_id = "your-gcp-project-id"
+region     = "asia-southeast1"
+
+# Optional override if your Cloud Build execution uses a user-managed service account.
+cloud_build_service_account_email = null

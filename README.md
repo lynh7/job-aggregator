@@ -141,83 +141,46 @@ Endpoints:
 
 ## Docker images
 
-- `docker/job-api.Dockerfile` -> `job-aggregator-api:latest`
-- `docker/candidate-api.Dockerfile` -> `job-aggregator-candidate-api:latest`
-- `docker/candidate-worker.Dockerfile` -> `job-aggregator-candidate-worker:latest`
-- `docker/crawler-api.Dockerfile` -> `job-aggregator-crawler-api:latest`
-- `docker/crawler-api-browser.Dockerfile` -> `job-aggregator-crawler-api-browser:latest`
+Primary CI/CD path:
 
-Build commands:
+- GitHub Actions triggers on `push` to `main` and `workflow_dispatch` only.
+- The workflow runs on a private self-hosted runner labeled `self-hosted,raspberry-pi`.
+- The Raspberry Pi runner authenticates to Google Cloud and runs `gcloud builds submit`.
+- Docker builds happen in Google Cloud Build, not on the Raspberry Pi.
+- Cloud Build logs in to GHCR with the `ghcr-token` secret from Google Secret Manager.
+- The default build target in this repo is `docker/job-api.Dockerfile` -> `ghcr.io/trthienan17/my-app:${GITHUB_SHA}` and `ghcr.io/trthienan17/my-app:latest`.
 
-```bash
-make build-job-api
-make build-candidate-api
-make build-candidate-worker
-make build-crawler-api
-make build-crawler-api-browser
-```
+Files:
 
-## Build agent
+- workflow: `.github/workflows/build-via-cloud-build.yml`
+- build config: `cloudbuild.yaml`
+- GCP bootstrap Terraform: `deploy/terraform/gcp-cloud-build-runner/`
+- Pi runner compose service: `/home/andy/repositories/home-docker-compose/services/github-actions-runner.yml`
 
-The local build agent lives in [scripts/build_agent.py](/home/andy/repositories/job-aggregator/scripts/build_agent.py).
+GitHub configuration required:
 
-What it watches and builds:
+- secret: `GCP_SERVICE_ACCOUNT_KEY`
+- variable: `GCP_PROJECT_ID`
 
-- target repository: `/home/andy/repositories/job-aggregator`
-- remote branch watched by default: `origin/main`
-- build source: a temporary detached git worktree from the watched commit
-- versioning: patch-only semantic bump from `pyproject.toml`
+GCP bootstrap creates:
 
-Current default image set built by the agent:
+- runner service account for the Raspberry Pi workflow runner
+- `roles/cloudbuild.builds.editor` and `roles/serviceusage.serviceUsageConsumer` on that runner service account
+- Secret Manager secret `ghcr-token`
+- Secret Manager access for the Cloud Build execution service account
+- populate the GHCR PAT after `terraform apply` with `gcloud secrets versions add ghcr-token --data-file=-`
 
-- `job-aggregator-api`
-- `job-aggregator-crawler-api`
-- `job-aggregator-crawler-api-browser`
-- `job-aggregator-candidate-api`
-- `job-aggregator-candidate-worker`
+Security constraints implemented:
 
-Run once:
+- no `pull_request` trigger
+- no public inbound port on the Raspberry Pi runner
+- no Docker image build on the Raspberry Pi runner
+- Kubernetes and Helm examples use immutable `replace-with-git-sha` tags instead of `latest`
 
-```bash
-make build-agent
-```
+Legacy local build agent:
 
-Run continuously in the foreground:
-
-```bash
-python3 scripts/build_agent.py --mode daemon --poll-seconds 60
-```
-
-Run with custom repository or registry:
-
-```bash
-BUILD_AGENT_REGISTRY=ghcr.io/<org> BUILD_AGENT_PUSH=true python3 scripts/build_agent.py --mode once
-```
-
-```bash
-python3 scripts/build_agent.py   --mode once   --repo-dir /home/andy/repositories/job-aggregator   --remote origin   --branch main
-```
-
-State file:
-
-- default: `/home/andy/repositories/job-aggregator/.codex/build-agent/state.json`
-- stores `last_built_sha` and `last_version`
-
-Environment variables:
-
-- `BUILD_AGENT_POLL_SECONDS`
-- `BUILD_AGENT_REMOTE`
-- `BUILD_AGENT_BRANCH`
-- `BUILD_AGENT_REGISTRY`
-- `BUILD_AGENT_PUSH`
-- `BUILD_AGENT_STATE_FILE`
-
-Systemd units:
-
-- [deploy/systemd/job-aggregator-build-agent.service](/home/andy/repositories/job-aggregator/deploy/systemd/job-aggregator-build-agent.service)
-- [deploy/systemd/job-aggregator-build-agent.timer](/home/andy/repositories/job-aggregator/deploy/systemd/job-aggregator-build-agent.timer)
-
-Install them on this machine with paths unchanged only if the repo stays at `/home/andy/repositories/job-aggregator`.
+- `scripts/build_agent.py` and `deploy/systemd/job-aggregator-build-agent.service` remain in the repo as older local-build tooling.
+- Do not use that path for this Raspberry Pi architecture.
 
 ## Helm examples
 

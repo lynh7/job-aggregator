@@ -2,7 +2,7 @@ fullnameOverride: job-api
 replicaCount: 2
 image:
   repository: job-aggregator-api
-  tag: latest
+  tag: replace-with-git-sha
 containerPorts:
   - name: http
     containerPort: 8000

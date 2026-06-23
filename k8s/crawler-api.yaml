@@ -14,7 +14,7 @@ spec:
     spec:
       containers:
         - name: crawler-api
-          image: job-aggregator-crawler-api:latest
+          image: job-aggregator-crawler-api:replace-with-git-sha
           ports:
             - containerPort: 8200
           envFrom:

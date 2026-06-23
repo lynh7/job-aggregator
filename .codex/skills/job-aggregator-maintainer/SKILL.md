@@ -17,7 +17,7 @@ deployment packaging, or operational behavior.
 - `k8s/`: per-service Kubernetes manifests.
 - `Helm.Base/`: reusable Helm chart and example overrides.
 - `tests/`: API, business-rule, export, and candidate workflow tests.
-- `references/cluster-deployment.md`: read when work touches Docker, Helm, Kubernetes, storage, scaling, or GitOps handoff.
+- `references/cluster-deployment.md`: read when work touches Docker, Helm, Kubernetes, storage, scaling, GitOps handoff, or CI/CD build flow.
 
 ## Runtime rules
 
@@ -30,7 +30,9 @@ deployment packaging, or operational behavior.
 - The candidate API should remain stateless. Heavy work belongs in `candidate_service/worker.py`.
 - The live candidate queue path still defaults to `QUEUE_BACKEND=database`.
 - Target PostgreSQL-compatible production behavior, not SQLite assumptions.
-- When topology changes, update Dockerfiles, `k8s/`, Helm examples, README, and this skill together.
+- When topology or build flow changes, update Dockerfiles, `k8s/`, Helm examples, CI workflows, README, and this skill together.
+- The preferred image build path is GitHub Actions on a private self-hosted Raspberry Pi runner submitting to Google Cloud Build.
+- Use immutable Git SHA image tags in Kubernetes-facing examples and environment values; `latest` is convenience only.
 
 ## Common tasks
 
@@ -59,6 +61,14 @@ make build-crawler-api
 make build-crawler-api-browser
 make build-candidate-api
 make build-candidate-worker
+```
+
+### CI/CD files
+
+```bash
+sed -n '1,220p' .github/workflows/build-via-cloud-build.yml
+sed -n '1,220p' cloudbuild.yaml
+find deploy/terraform/gcp-cloud-build-runner -maxdepth 2 -type f
 ```
 
 ### Render Helm workloads
@@ -102,7 +112,7 @@ helm template candidate-worker ./Helm.Base -f ./Helm.Base/examples/candidate-wor
   - `docker/crawler-api.Dockerfile`
   - `docker/candidate-api.Dockerfile`
   - `docker/candidate-worker.Dockerfile`
-- Keep service-specific image names and ports aligned with manifests and Helm values.
+- Keep service-specific image names, immutable tags, and ports aligned across Cloud Build, manifests, and Helm values.
 - Treat `/app/data` storage, PostgreSQL wiring, and ingest token wiring as deployment contract.
 
 ## Validation expectations

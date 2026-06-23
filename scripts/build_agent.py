@@ -51,6 +51,7 @@ class BuildAgent:
         remote: str,
         branch: str,
         registry: str | None,
+        image_repository: str | None,
         push: bool,
     ) -> None:
         self.repo_dir = repo_dir
@@ -58,6 +59,7 @@ class BuildAgent:
         self.remote = remote
         self.branch = branch
         self.registry = registry.rstrip("/") if registry else None
+        self.image_repository = image_repository.rstrip("/") if image_repository else None
         self.push = push
 
     def run_once(self) -> bool:
@@ -116,6 +118,12 @@ class BuildAgent:
                 self._git("worktree", "remove", "--force", str(worktree_dir))
 
     def _image_tags(self, image_name: str, version: BuildVersion) -> list[str]:
+        if self.image_repository:
+            service_slug = image_name.removeprefix("job-aggregator-")
+            return [
+                f"{self.image_repository}:{service_slug}-{version.tag()}",
+                f"{self.image_repository}:{service_slug}-latest",
+            ]
         base_name = f"{self.registry}/{image_name}" if self.registry else image_name
         return [f"{base_name}:{version.tag()}", f"{base_name}:latest"]
 
@@ -198,6 +206,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--branch", default=os.environ.get("BUILD_AGENT_BRANCH", "main"))
     parser.add_argument("--registry", default=os.environ.get("BUILD_AGENT_REGISTRY"))
     parser.add_argument(
+        "--image-repository",
+        default=os.environ.get("BUILD_AGENT_IMAGE_REPOSITORY"),
+    )
+    parser.add_argument(
         "--push",
         action="store_true",
         default=os.environ.get("BUILD_AGENT_PUSH", "").lower() in {"1", "true", "yes"},
@@ -217,6 +229,7 @@ def main() -> None:
         remote=args.remote,
         branch=args.branch,
         registry=args.registry,
+        image_repository=args.image_repository,
         push=args.push,
     )
     if args.mode == "daemon":

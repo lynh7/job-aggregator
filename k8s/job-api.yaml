@@ -14,7 +14,7 @@ spec:
     spec:
       containers:
         - name: job-api
-          image: job-aggregator-api:latest
+          image: job-aggregator-api:replace-with-git-sha
           ports:
             - containerPort: 8000
           envFrom:

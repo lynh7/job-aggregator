@@ -14,7 +14,7 @@ spec:
     spec:
       containers:
         - name: candidate-worker
-          image: job-aggregator-candidate-worker:latest
+          image: job-aggregator-candidate-worker:replace-with-git-sha
           envFrom:
             - secretRef:
                 name: job-aggregator-env

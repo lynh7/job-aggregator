@@ -1,0 +1,50 @@
+name: Build Container Via Cloud Build
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cloud-build-main
+  cancel-in-progress: true
+
+env:
+  GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+  GHCR_IMAGE: ghcr.io/trthienan17/my-app
+  BUILD_CONTEXT: .
+  DOCKERFILE: docker/job-api.Dockerfile
+
+jobs:
+  cloud-build:
+    runs-on:
+      - self-hosted
+      - raspberry-pi
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ env.GCP_PROJECT_ID }}
+
+      - name: Submit remote build
+        env:
+          CLOUDSDK_CORE_DISABLE_PROMPTS: "1"
+        run: |
+          echo "Submitting Cloud Build for ${GHCR_IMAGE}:${GITHUB_SHA}"
+          gcloud builds submit \
+            --project="${GCP_PROJECT_ID}" \
+            --config=cloudbuild.yaml \
+            --substitutions=COMMIT_SHA="${GITHUB_SHA}",SHORT_SHA="${GITHUB_SHA::7}",_GHCR_IMAGE="${GHCR_IMAGE}",_DOCKERFILE="${DOCKERFILE}",_CONTEXT="${BUILD_CONTEXT}",_GITHUB_REPOSITORY="${GITHUB_REPOSITORY}",_GITHUB_REF_NAME="${GITHUB_REF_NAME}"
