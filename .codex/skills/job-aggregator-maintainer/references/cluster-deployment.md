@@ -6,57 +6,77 @@ Read this file when work touches:
 - Helm chart shape or values
 - Kubernetes manifests
 - replica counts, probes, resources, or persistence
-- database choice, queue backend, or runtime topology
+- database choice, queue backend, crawler topology, or runtime topology
 - handoff between this repo and a separate GitOps repo
 
 ## Current runtime facts
 
-- The active production queue path is database-backed. `QUEUE_BACKEND=database` is the default in `.env.example`, and worker claiming logic lives in `candidate_service/task_queue.py`.
+- The core job API owns normalization, master-data persistence, and JSON/XLSX export generation.
+- The crawler is now a separate service. It crawls provider pages and posts raw records to `/api/v1/ingest/raw-jobs` on the core API.
+- The ingest path can be protected by `INGEST_API_TOKEN`. The crawler and core API must share the same token.
+- The active production candidate queue path is still database-backed with `QUEUE_BACKEND=database`.
 - NATS exists for future event-driven work, but current candidate processing does not require it.
 - Production concurrency assumes PostgreSQL-compatible locking. The worker uses `FOR UPDATE SKIP LOCKED` when the dialect is not SQLite.
-- Candidate uploads are written to local disk under `CANDIDATE_STORAGE_DIR`, and `CandidateDocument.storage_path` stores filesystem paths in the database.
+- Candidate uploads are written to local disk under `CANDIDATE_STORAGE_DIR`.
 - Job exports are written to local disk under `EXPORT_DIR`.
-- All app entrypoints currently call `Base.metadata.create_all(...)` at startup. This is convenient for development but weak for production migrations.
-- Current Dockerfiles install `pip install .`, not `pip install '.[postgres]'`, so PostgreSQL deployments need image changes or equivalent dependency handling.
+- All app entrypoints still use startup `create_all(...)`; this is convenient for development and weak for production migrations.
 
 ## Deployment ownership split
 
 Recommended split:
 
-- `job-aggregator` repo owns app code, Dockerfiles, image build logic, Helm chart structure, chart defaults, ports, probes, commands, env variable names, and service topology.
+- `job-aggregator` repo owns app code, Dockerfiles, image build logic, Helm chart structure, chart defaults, ports, probes, env variable names, and service topology.
 - GitOps repo owns environment-specific values: image tags, replica counts, ingress hosts, secret references, storage class, resource sizing, and rollout objects.
 
-Do not treat `k8s/` as the long-term source of truth if Helm is the packaged deployment artifact. Keep raw manifests aligned, but drive real deployments through the chart.
+Use raw `k8s/` manifests as reference. Use Helm or the GitOps repo as deployment source of truth.
 
-## Recommended cluster topology
+## Recommended crawler topology
 
-Default first production shape:
+Default first cluster shape:
 
-- PostgreSQL via CNPG or another managed PostgreSQL offering
 - `job-api`: 2 replicas
-- `candidate-api`: 1 replica initially
-- `candidate-worker`: 1 replica initially
-- `nats`: disabled unless queue migration is in progress
+- `crawler-api`: 1 replica
+- `candidate-api`: 1 replica
+- `candidate-worker`: 1 replica
+- `nats`: disabled unless queue migration is active
+- PostgreSQL: required for real multi-worker scaling
 
 Reasoning:
 
-- `job-api` is stateless enough to scale horizontally.
-- `candidate-api` accepts uploads that land on local/shared storage, so scaling safely depends on storage design.
-- `candidate-worker` can scale horizontally only when PostgreSQL is in use and the document storage path is reachable from every worker pod.
+- `job-api` is mostly stateless and can scale horizontally.
+- `crawler-api` is compute/browser heavy and should start at 1 replica until selector stability and resource usage are known.
+- `candidate-api` and `candidate-worker` still depend on shared document storage assumptions.
+
+## Crawler deployment contract
+
+Required env wiring for crawler:
+
+- `CORE_API_BASE_URL=http://job-api:8000`
+- `CORE_API_INGEST_PATH=/api/v1/ingest/raw-jobs`
+- `INGEST_API_TOKEN=<shared token>` if enabled
+- `CRAWLER_ENABLED_PROVIDERS=topcv,itviec`
+
+Required image/runtime facts:
+
+- `docker/crawler-api.Dockerfile` installs `crawl4ai` and Playwright Chromium.
+- The crawler image is heavier than the core API image.
+- Browser workloads need explicit CPU and memory requests in cluster values.
+
+Recommended first-pass requests/limits for crawler:
+
+- requests: `cpu: 500m`, `memory: 1Gi`
+- limits: `cpu: 2`, `memory: 2Gi`
+
+Adjust after measuring real crawl volume and browser concurrency.
 
 ## Persistence and scaling constraints
 
-- The current app assumes shared access to `/app/data` for candidate documents and exports.
-- A single shared PVC with `ReadWriteOnce` is a bad default for multi-pod deployments.
+- The current app still assumes shared access to `/app/data` for candidate documents and exports.
+- A single `ReadWriteOnce` PVC is a poor default for multi-pod candidate components.
 - Safer first deploy options:
   - keep `candidate-api` and `candidate-worker` at one replica each
-  - use `ReadWriteMany` storage if the cluster supports it
-  - or redesign storage to use S3-compatible object storage and store object keys instead of pod-local file paths
-
-If scaling candidate components, verify both of these:
-
-- PostgreSQL is the active database
-- uploaded document paths are accessible from every worker pod that may claim the task
+  - use `ReadWriteMany` storage if supported
+  - or redesign storage to use S3-compatible object storage
 
 ## Helm packaging guidance
 
@@ -64,27 +84,28 @@ Preferred chart direction:
 
 - one app chart in this repo packaging:
   - `job-api`
+  - `crawler-api`
   - `candidate-api`
   - `candidate-worker`
 - feature flags such as:
   - `jobApi.enabled`
+  - `crawlerApi.enabled`
   - `candidateApi.enabled`
   - `candidateWorker.enabled`
   - `nats.enabled` with default `false`
 
-Chart defaults should describe the application contract, not one cluster's staging values.
-
-Keep generic template logic in templates and push service-specific or environment-specific values into values files.
+Keep generic logic in templates. Push service-specific and environment-specific values into values files.
 
 ## Production-readiness gaps
 
-Before relying on this repo for cluster deployment, prioritize:
+Prioritize these before relying on the cluster deploy:
 
-1. Install PostgreSQL runtime dependencies in all deployed images.
-2. Replace startup `create_all()` with migrations or a controlled bootstrap job.
+1. Install PostgreSQL runtime deps in deployed images that need them.
+2. Replace startup `create_all()` with migrations or a bootstrap job.
 3. Add or verify readiness/liveness probes, requests/limits, and ingress/auth decisions.
 4. Make storage behavior explicit in chart values.
-5. Keep Dockerfiles, README, `k8s/`, and Helm values aligned whenever topology changes.
+5. Make crawler scheduling explicit: manual API trigger, CronJob, or external scheduler.
+6. Keep Dockerfiles, README, `k8s/`, and Helm values aligned whenever topology changes.
 
 ## Validation checklist
 
@@ -92,6 +113,6 @@ When deployment assets change:
 
 - build all touched images
 - render Helm templates for each workload variant
-- verify image names and tags remain service-specific
-- verify env vars required for PostgreSQL and storage are still wired
-- verify replica counts do not contradict storage mode or queue backend assumptions
+- verify service-specific image names and ports
+- verify env vars for PostgreSQL, storage, core ingest, and crawler runtime
+- verify replica counts do not contradict storage mode or queue assumptions
