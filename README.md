@@ -157,6 +157,66 @@ make build-crawler-api
 make build-crawler-api-browser
 ```
 
+## Build agent
+
+The local build agent lives in [scripts/build_agent.py](/home/andy/repositories/job-aggregator/scripts/build_agent.py).
+
+What it watches and builds:
+
+- target repository: `/home/andy/repositories/job-aggregator`
+- remote branch watched by default: `origin/main`
+- build source: a temporary detached git worktree from the watched commit
+- versioning: patch-only semantic bump from `pyproject.toml`
+
+Current default image set built by the agent:
+
+- `job-aggregator-api`
+- `job-aggregator-candidate-api`
+- `job-aggregator-candidate-worker`
+
+Run once:
+
+```bash
+make build-agent
+```
+
+Run continuously in the foreground:
+
+```bash
+python3 scripts/build_agent.py --mode daemon --poll-seconds 60
+```
+
+Run with custom repository or registry:
+
+```bash
+BUILD_AGENT_REGISTRY=ghcr.io/<org> BUILD_AGENT_PUSH=true python3 scripts/build_agent.py --mode once
+```
+
+```bash
+python3 scripts/build_agent.py   --mode once   --repo-dir /home/andy/repositories/job-aggregator   --remote origin   --branch main
+```
+
+State file:
+
+- default: `/home/andy/repositories/job-aggregator/.codex/build-agent/state.json`
+- stores `last_built_sha` and `last_version`
+
+Environment variables:
+
+- `BUILD_AGENT_POLL_SECONDS`
+- `BUILD_AGENT_REMOTE`
+- `BUILD_AGENT_BRANCH`
+- `BUILD_AGENT_REGISTRY`
+- `BUILD_AGENT_PUSH`
+- `BUILD_AGENT_STATE_FILE`
+
+Systemd units:
+
+- [deploy/systemd/job-aggregator-build-agent.service](/home/andy/repositories/job-aggregator/deploy/systemd/job-aggregator-build-agent.service)
+- [deploy/systemd/job-aggregator-build-agent.timer](/home/andy/repositories/job-aggregator/deploy/systemd/job-aggregator-build-agent.timer)
+
+Install them on this machine with paths unchanged only if the repo stays at `/home/andy/repositories/job-aggregator`.
+
 ## Helm examples
 
 Render each workload from the shared chart:
