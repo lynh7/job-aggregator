@@ -171,6 +171,8 @@ What it watches and builds:
 Current default image set built by the agent:
 
 - `job-aggregator-api`
+- `job-aggregator-crawler-api`
+- `job-aggregator-crawler-api-browser`
 - `job-aggregator-candidate-api`
 - `job-aggregator-candidate-worker`
 

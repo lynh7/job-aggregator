@@ -18,6 +18,12 @@ from pathlib import Path
 SEMVER_RE = re.compile(r"^v?(?P<major>\d+)\.(?P<minor>\d+)\.(?P<patch>\d+)$")
 IMAGE_SPECS = (
     ("job-api", "docker/job-api.Dockerfile", "job-aggregator-api"),
+    ("crawler-api", "docker/crawler-api.Dockerfile", "job-aggregator-crawler-api"),
+    (
+        "crawler-api-browser",
+        "docker/crawler-api-browser.Dockerfile",
+        "job-aggregator-crawler-api-browser",
+    ),
     ("candidate-api", "docker/candidate-api.Dockerfile", "job-aggregator-candidate-api"),
     ("candidate-worker", "docker/candidate-worker.Dockerfile", "job-aggregator-candidate-worker"),
 )
