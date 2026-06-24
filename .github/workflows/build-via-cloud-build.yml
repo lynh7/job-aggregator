@@ -23,7 +23,6 @@ jobs:
   cloud-build:
     runs-on:
       - self-hosted
-      - raspberry-pi
     timeout-minutes: 60
     steps:
       - name: Checkout
