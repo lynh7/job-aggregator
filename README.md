@@ -198,3 +198,4 @@ Recommended GitOps split:
 
 - this repo owns chart structure and example workload values
 - `home-server/applications` owns environment-specific overrides such as image tags, secrets, replicas, ingress, and storage class
+
