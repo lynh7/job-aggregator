@@ -20,7 +20,7 @@ env:
   DOCKERFILE: docker/job-api.Dockerfile
 
 jobs:
-  clou
+  cloud-build:
     runs-on:
       - self-hosted
     timeout-minutes: 60
