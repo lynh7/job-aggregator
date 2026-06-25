@@ -28,11 +28,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install Python 3.10
+      - name: Setup Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Export CLOUDSDK_PYTHON
         run: |
-          sudo apt-get update
-          sudo apt-get install -y python3.10
-          PYTHON_BIN=$(which python3.10)
+          PYTHON_BIN=$(python3 -c 'import sys; print(sys.executable)')
           echo "Using Python: ${PYTHON_BIN}"
           ${PYTHON_BIN} --version
           echo "CLOUDSDK_PYTHON=${PYTHON_BIN}" >> $GITHUB_ENV
