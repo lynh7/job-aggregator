@@ -28,13 +28,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install Python 3
+      - name: Install Python 3.10
         run: |
-          if ! command -v python3 &> /dev/null; then
-            sudo apt-get update
-            sudo apt-get install -y python3 python3-pip
-          fi
-          python3 --version
+          sudo apt-get update
+          sudo apt-get install -y python3.10 python3.10-venv python3-pip
+          PYTHON_BIN=$(which python3.10)
+          echo "Using Python: ${PYTHON_BIN}"
+          ${PYTHON_BIN} --version
+          echo "CLOUDSDK_PYTHON=${PYTHON_BIN}" >> $GITHUB_ENV
 
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
