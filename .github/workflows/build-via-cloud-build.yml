@@ -52,7 +52,48 @@ jobs:
 
       - name: Verify gcloud installation
         run: gcloud --version
+      - name: Stop if monthly Cloud Build usage too high
+        env:
+          PROJECT_ID: ${{ env.GCP_PROJECT_ID }}
+          MAX_BUILD_MINUTES: "2200"
+        run: |
+          python3 - <<'PY'
+          import json, subprocess, datetime, sys
 
+          project = "${PROJECT_ID}"
+          limit = int("${MAX_BUILD_MINUTES}")
+
+          now = datetime.datetime.utcnow()
+          month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat() + "Z"
+
+          cmd = [
+              "gcloud", "builds", "list",
+              f"--project={project}",
+              f"--filter=createTime>={month_start}",
+              "--format=json"
+          ]
+          out = subprocess.check_output(cmd, text=True)
+          builds = json.loads(out)
+
+          total_seconds = 0
+          for b in builds:
+              start = b.get("startTime")
+              finish = b.get("finishTime")
+              if not start or not finish:
+                  continue
+              s = datetime.datetime.fromisoformat(start.replace("Z", "+00:00"))
+              f = datetime.datetime.fromisoformat(finish.replace("Z", "+00:00"))
+              total_seconds += max(0, (f - s).total_seconds())
+
+          minutes = total_seconds / 60
+          print(f"Cloud Build minutes this month: {minutes:.1f}")
+          print(f"Guard limit: {limit}")
+
+          if minutes >= limit:
+              print("Build blocked: monthly Cloud Build usage limit reached.", file=sys.stderr)
+              sys.exit(1)
+          PY
+          
       - name: Submit remote build
         env:
           CLOUDSDK_CORE_DISABLE_PROMPTS: "1"
