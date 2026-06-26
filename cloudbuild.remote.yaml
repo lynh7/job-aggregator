@@ -1,46 +1,39 @@
 steps:
-  - id: login-ghcr
-    name: gcr.io/cloud-builders/docker
+  - name: gcr.io/cloud-builders/git
+    entrypoint: bash
+    args:
+      - -ceu
+      - |
+        git clone "${_REPO_URL}" /workspace/src
+        cd /workspace/src
+        git checkout "${_REVISION}"
+
+  - name: gcr.io/cloud-builders/docker
     entrypoint: bash
     secretEnv:
       - GHCR_TOKEN
     args:
       - -ceu
       - |
-        echo "$$GHCR_TOKEN" | docker login ghcr.io --username trthienan17 --password-stdin
+        cd /workspace/src
 
-  - id: build-image
-    name: gcr.io/cloud-builders/docker
-    args:
-      - build
-      - -f
-      - ${_DOCKERFILE}
-      - -t
-      - ${_GHCR_IMAGE}:$COMMIT_SHA
-      - -t
-      - ${_GHCR_IMAGE}:latest
-      - ${_CONTEXT}
+        echo "${GHCR_TOKEN}" | docker login ghcr.io --username "${_GHCR_USERNAME}" --password-stdin
 
-  - id: push-sha
-    name: gcr.io/cloud-builders/docker
-    args:
-      - push
-      - ${_GHCR_IMAGE}:$COMMIT_SHA
+        docker build \
+          --label "org.opencontainers.image.source=https://github.com/${_GITHUB_REPOSITORY}" \
+          --label "org.opencontainers.image.revision=${_REVISION}" \
+          -f "${_DOCKERFILE}" \
+          -t "${_GHCR_IMAGE}:${_REVISION}" \
+          -t "${_GHCR_IMAGE}:${_SHORT_SHA}" \
+          -t "${_GHCR_IMAGE}:latest" \
+          "${_CONTEXT}"
 
-  - id: push-latest
-    name: gcr.io/cloud-builders/docker
-    args:
-      - push
-      - ${_GHCR_IMAGE}:latest
-
-substitutions:
-  _GHCR_IMAGE: ghcr.io/trthienan17/my-app
-  _DOCKERFILE: docker/job-api.Dockerfile
-  _CONTEXT: .
-  _GITHUB_REPOSITORY: unknown
-  _GITHUB_REF_NAME: main
+        docker push "${_GHCR_IMAGE}:${_REVISION}"
+        docker push "${_GHCR_IMAGE}:${_SHORT_SHA}"
+        docker push "${_GHCR_IMAGE}:latest"
 
 options:
+  machineType: E2_STANDARD_2
   logging: CLOUD_LOGGING_ONLY
 
 availableSecrets:
