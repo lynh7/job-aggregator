@@ -17,7 +17,7 @@ steps:
       - |
         cd /workspace/src
 
-        echo "${GHCR_TOKEN}" | docker login ghcr.io --username "${_GHCR_USERNAME}" --password-stdin
+        echo "$$GHCR_TOKEN" | docker login ghcr.io --username "${_GHCR_USERNAME}" --password-stdin
 
         docker build \
           --label "org.opencontainers.image.source=https://github.com/${_GITHUB_REPOSITORY}" \
