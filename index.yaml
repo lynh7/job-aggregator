@@ -1,0 +1,14 @@
+apiVersion: v1
+entries:
+  job-aggregator:
+  - apiVersion: v2
+    appVersion: 0.1.0
+    created: "2026-06-26T16:26:47.860325648Z"
+    description: Helm chart for the recommended job-aggregator application topology
+    digest: 55b63a18d0cf24abd4b46f7cafb474bb64e19ced6fcd4d90ab5857f766dcce68
+    name: job-aggregator
+    type: application
+    urls:
+    - https://lynh7.github.io/job-aggregator/job-aggregator-0.1.0.tgz
+    version: 0.1.0
+generated: "2026-06-26T16:26:47.826490564Z"
