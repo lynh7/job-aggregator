@@ -140,4 +140,4 @@ jobs:
             --project="${PROJECT_ID}" \
             --no-source \
             --config=cloudbuild.remote.yaml \
-            --substitutions=_REPO_URL="https://github.com/${GITHUB_REPOSITORY}.git",_REVISION="${GITHUB_SHA}",_SHORT_SHA="${SHORT_SHA}",_GHCR_IMAGE="${GHCR_IMAGE}",_DOCKERFILE="${DOCKERFILE}",_CONTEXT="${BUILD_CONTEXT}",_GITHUB_REF_NAME="${GITHUB_REF_NAME}"
+            --substitutions=_REPO_URL="https://github.com/${GITHUB_REPOSITORY}.git",_REVISION="${GITHUB_SHA}",_SHORT_SHA="${SHORT_SHA}",_GHCR_IMAGE="${GHCR_IMAGE}",_GHCR_USERNAME="trthienan17",_DOCKERFILE="${DOCKERFILE}",_CONTEXT="${BUILD_CONTEXT}",_GITHUB_REPOSITORY="${GITHUB_REPOSITORY}"
