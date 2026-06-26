@@ -1,9 +1,0 @@
-[Unit]
-Description=Start Job Aggregator Docker Build Agent
-
-[Timer]
-OnBootSec=30s
-Unit=job-aggregator-build-agent.service
-
-[Install]
-WantedBy=timers.target
