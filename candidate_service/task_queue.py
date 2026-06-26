@@ -5,7 +5,6 @@ from sqlalchemy.orm import Session
 
 from app.models import CandidateTask
 
-
 def enqueue_candidate_task(
     session: Session,
     *,
