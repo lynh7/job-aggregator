@@ -33,7 +33,6 @@ steps:
         docker push "${_GHCR_IMAGE}:latest"
 
 options:
-  machineType: E2_STANDARD_2
   logging: CLOUD_LOGGING_ONLY
 
 availableSecrets:
