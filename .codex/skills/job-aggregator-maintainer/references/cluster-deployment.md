@@ -34,6 +34,7 @@ Use raw `k8s/` manifests as reference. Use Helm or the GitOps repo as deployment
 
 - GitHub Actions triggers on `push` to `main` when image-producing paths change and on `workflow_dispatch`.
 - `workflow_dispatch` builds every service image.
+- Repo release version source of truth is git tags starting at `v0.1.0`. CI bumps only the patch digit and computes one new version per workflow run.
 - `push` builds only the affected images:
   - `app/**` or `docker/job-api.Dockerfile` -> `job-api`
   - `candidate_service/**`, `docker/candidate-api.Dockerfile`, or `docker/candidate-worker.Dockerfile` -> `candidate-api` and `candidate-worker`
@@ -43,12 +44,15 @@ Use raw `k8s/` manifests as reference. Use Helm or the GitOps repo as deployment
 - The Raspberry Pi runner must not build Docker images locally. It only authenticates to GCP and runs `gcloud builds submit`.
 - Google Cloud Build performs the Docker build and pushes GHCR tags.
 - `cloudbuild.remote.yaml` logs in to GHCR using Secret Manager secret `ghcr-token`.
+- After all selected image builds pass, the workflow creates and pushes the new repo git tag.
 - Published GHCR repositories:
   - `ghcr.io/lynh7/job-aggregator-job-api`
   - `ghcr.io/lynh7/job-aggregator-candidate-api`
   - `ghcr.io/lynh7/job-aggregator-candidate-worker`
   - `ghcr.io/lynh7/job-aggregator-crawler-api`
   - `ghcr.io/lynh7/job-aggregator-crawler-api-browser`
+- Image tags pushed per selected image: `<semver>`, `<full git sha>`, `<short sha>`, and `latest`.
+- Selective-build mode means some later semver tags may exist only for the images changed in that release.
 - Kubernetes-facing values should pin immutable Git SHA tags, not rely on `latest`.
 
 ## Recommended crawler topology

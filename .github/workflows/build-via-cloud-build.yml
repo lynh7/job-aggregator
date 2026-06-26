@@ -16,7 +16,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: cloud-build-main
@@ -150,9 +150,63 @@ jobs:
           echo "Image count: ${{ steps.detect.outputs.count }}"
           echo "Images: ${{ steps.detect.outputs.names }}"
 
+  resolve-version:
+    needs:
+      - detect-images
+    if: ${{ needs.detect-images.outputs.count != '0' }}
+    runs-on:
+      - self-hosted
+    outputs:
+      git_tag: ${{ steps.version.outputs.git_tag }}
+      semver: ${{ steps.version.outputs.semver }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fetch tags
+        run: git fetch --tags --force
+
+      - name: Resolve next patch version
+        id: version
+        run: |
+          python3 - <<'PY'
+          import re
+          import subprocess
+          from pathlib import Path
+          import os
+
+          tags = subprocess.check_output(
+              ['git', 'tag', '--list', 'v*', '--sort=version:refname'],
+              text=True,
+          ).splitlines()
+          tags = [tag.strip() for tag in tags if tag.strip()]
+          latest = tags[-1] if tags else None
+
+          if latest is None:
+              next_tag = 'v0.1.0'
+          else:
+              match = re.fullmatch(r'v(\d+)\.(\d+)\.(\d+)', latest)
+              if not match:
+                  raise RuntimeError(f'Latest version tag has unexpected format: {latest!r}')
+              major, minor, patch = map(int, match.groups())
+              next_tag = f'v{major}.{minor}.{patch + 1}'
+
+          semver = next_tag.removeprefix('v')
+          print(f'Latest version tag: {latest or "<none>"}')
+          print(f'Next version tag: {next_tag}')
+
+          output = Path(os.environ['GITHUB_OUTPUT'])
+          with output.open('a', encoding='utf-8') as fh:
+              fh.write(f'git_tag={next_tag}\n')
+              fh.write(f'semver={semver}\n')
+          PY
+
   cloud-build:
     needs:
       - detect-images
+      - resolve-version
     if: ${{ needs.detect-images.outputs.count != '0' }}
     runs-on:
       - self-hosted
@@ -163,6 +217,8 @@ jobs:
         include: ${{ fromJson(needs.detect-images.outputs.matrix) }}
     env:
       GHCR_USERNAME: trthienan17
+      VERSION_TAG: ${{ needs.resolve-version.outputs.git_tag }}
+      VERSION_SEMVER: ${{ needs.resolve-version.outputs.semver }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -266,8 +322,9 @@ jobs:
           DOCKERFILE: ${{ matrix.dockerfile }}
           BUILD_CONTEXT: ${{ matrix.context }}
         run: |
-          echo "Submitting Cloud Build for ${GHCR_IMAGE}:${GITHUB_SHA}"
+          echo "Submitting Cloud Build for ${GHCR_IMAGE}:${VERSION_SEMVER}"
           echo "Component: ${{ matrix.name }}"
+          echo "Version tag: ${VERSION_TAG}"
 
           PROJECT_ID="$(gcloud projects describe "${GCP_PROJECT_ID}" --format='value(projectId)')"
           SHORT_SHA="${GITHUB_SHA::7}"
@@ -280,7 +337,43 @@ jobs:
             --project="${PROJECT_ID}" \
             --no-source \
             --config=cloudbuild.remote.yaml \
-            --substitutions=_REPO_URL="https://github.com/${GITHUB_REPOSITORY}.git",_REVISION="${GITHUB_SHA}",_SHORT_SHA="${SHORT_SHA}",_GHCR_IMAGE="${GHCR_IMAGE}",_GHCR_USERNAME="${GHCR_USERNAME}",_DOCKERFILE="${DOCKERFILE}",_CONTEXT="${BUILD_CONTEXT}",_GITHUB_REPOSITORY="${GITHUB_REPOSITORY}"
+            --substitutions=_REPO_URL="https://github.com/${GITHUB_REPOSITORY}.git",_REVISION="${GITHUB_SHA}",_SHORT_SHA="${SHORT_SHA}",_GHCR_IMAGE="${GHCR_IMAGE}",_GHCR_USERNAME="${GHCR_USERNAME}",_DOCKERFILE="${DOCKERFILE}",_CONTEXT="${BUILD_CONTEXT}",_GITHUB_REPOSITORY="${GITHUB_REPOSITORY}",_SEMVER_TAG="${VERSION_SEMVER}"
+
+  create-version-tag:
+    needs:
+      - detect-images
+      - resolve-version
+      - cloud-build
+    if: ${{ needs.detect-images.outputs.count != '0' && needs.cloud-build.result == 'success' }}
+    runs-on:
+      - self-hosted
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fetch tags
+        run: git fetch --tags --force
+
+      - name: Create repository tag
+        env:
+          VERSION_TAG: ${{ needs.resolve-version.outputs.git_tag }}
+        run: |
+          if git rev-parse -q --verify "refs/tags/${VERSION_TAG}" >/dev/null; then
+            echo "Tag ${VERSION_TAG} already exists locally; skipping create."
+            exit 0
+          fi
+
+          if git ls-remote --tags origin "refs/tags/${VERSION_TAG}" | grep -q "${VERSION_TAG}$"; then
+            echo "Tag ${VERSION_TAG} already exists on origin; skipping create."
+            exit 0
+          fi
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git tag "${VERSION_TAG}" "${GITHUB_SHA}"
+          git push origin "${VERSION_TAG}"
 
   no-op:
     needs:

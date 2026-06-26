@@ -38,6 +38,8 @@ deployment packaging, or operational behavior.
   - `ghcr.io/lynh7/job-aggregator-candidate-worker`
   - `ghcr.io/lynh7/job-aggregator-crawler-api`
   - `ghcr.io/lynh7/job-aggregator-crawler-api-browser`
+- Version source of truth is repo git tags starting at `v0.1.0`. CI only bumps the patch digit and applies the same new version to every image built in that workflow run.
+- Selective builds share one repo version, so unchanged images may not exist for every later patch tag.
 - Use immutable Git SHA image tags in Kubernetes-facing examples and environment values; `latest` is convenience only.
 
 ## Common tasks

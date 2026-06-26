@@ -29,7 +29,9 @@ steps:
           --progress=plain \
           --label "org.opencontainers.image.source=https://github.com/${_GITHUB_REPOSITORY}" \
           --label "org.opencontainers.image.revision=${_REVISION}" \
+          --label "org.opencontainers.image.version=${_SEMVER_TAG}" \
           -f "${_DOCKERFILE}" \
+          -t "${_GHCR_IMAGE}:${_SEMVER_TAG}" \
           -t "${_GHCR_IMAGE}:${_REVISION}" \
           -t "${_GHCR_IMAGE}:${_SHORT_SHA}" \
           -t "${_GHCR_IMAGE}:latest" \
@@ -40,6 +42,7 @@ steps:
     args:
       - -ceu
       - |
+        docker push "${_GHCR_IMAGE}:${_SEMVER_TAG}"
         docker push "${_GHCR_IMAGE}:${_REVISION}"
         docker push "${_GHCR_IMAGE}:${_SHORT_SHA}"
         docker push "${_GHCR_IMAGE}:latest"
