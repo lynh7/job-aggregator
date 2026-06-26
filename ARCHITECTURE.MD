@@ -99,9 +99,9 @@ Candidate Worker
 
 ## Deployment Shape
 
-- Kubernetes manifests split the workloads into separate deployments under `k8s/`
+- `helm-chart/` packages the workloads into one release with per-service toggles
 - All services share the same `DATABASE_URL`
-- `candidate-api` and `candidate-worker` also share `/app/data` for uploaded documents
+- `job-api`, `candidate-api`, and `candidate-worker` share `/app/data`
 - In production, PostgreSQL is the intended backend; SQLite is mainly for local development
 
 ## Current Constraints

@@ -1,0 +1,105 @@
+name: Release Helm Chart
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Semver to release, without the leading v
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-helm-chart
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on:
+      - self-hosted
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Helm
+        uses: azure/setup-helm@v4
+
+      - name: Resolve release version
+        id: version
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_VERSION: ${{ github.event.inputs.version }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          python3 - <<'PY'
+          import os
+          import re
+          from pathlib import Path
+
+          event_name = os.environ["EVENT_NAME"]
+          raw = os.environ["INPUT_VERSION"].strip() if event_name == "workflow_dispatch" else os.environ["REF_NAME"].strip()
+          match = re.fullmatch(r"v?(\d+\.\d+\.\d+)", raw)
+          if not match:
+              raise SystemExit(f"Expected version like v0.1.0 or 0.1.0, got: {raw!r}")
+
+          semver = match.group(1)
+          git_tag = f"v{semver}"
+
+          output = Path(os.environ["GITHUB_OUTPUT"])
+          with output.open("a", encoding="utf-8") as fh:
+              fh.write(f"semver={semver}\n")
+              fh.write(f"git_tag={git_tag}\n")
+          PY
+
+      - name: Update chart metadata and default image tag
+        env:
+          VERSION_SEMVER: ${{ steps.version.outputs.semver }}
+        run: |
+          python3 - <<'PY'
+          import os
+          import re
+          from pathlib import Path
+
+          version = os.environ["VERSION_SEMVER"]
+
+          chart_path = Path("helm-chart/Chart.yaml")
+          chart_text = chart_path.read_text(encoding="utf-8")
+          chart_text = re.sub(r"(?m)^version:\s*.*$", f"version: {version}", chart_text, count=1)
+          chart_text = re.sub(r'(?m)^appVersion:\s*.*$', f'appVersion: "{version}"', chart_text, count=1)
+          chart_path.write_text(chart_text, encoding="utf-8")
+
+          values_path = Path("helm-chart/values.yaml")
+          values_text = values_path.read_text(encoding="utf-8")
+          values_text = re.sub(
+              r'(?m)^  imageTag:\s*".*"$',
+              f'  imageTag: "{version}"',
+              values_text,
+              count=1,
+          )
+          values_path.write_text(values_text, encoding="utf-8")
+          PY
+
+      - name: Validate default chart render
+        run: helm template job-aggregator ./helm-chart
+
+      - name: Validate browser crawler render
+        run: helm template job-aggregator ./helm-chart -f ./helm-chart/examples/browser-crawler.values.yaml
+
+      - name: Validate shared PVC override render
+        run: helm template job-aggregator ./helm-chart -f ./helm-chart/examples/existing-shared-pvc.values.yaml
+
+      - name: Validate NATS render
+        run: helm template job-aggregator ./helm-chart -f ./helm-chart/examples/nats.values.yaml
+
+      - name: Package and publish chart
+        uses: helm/chart-releaser-action@v1.6.0
+        with:
+          charts_dir: .
+        env:
+          CR_TOKEN: ${{ secrets.GITHUB_TOKEN }}

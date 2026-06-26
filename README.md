@@ -16,7 +16,7 @@ response, applying versioned business rules, and exporting JSON/XLSX files.
 - JSON and XLSX exports
 - Separate candidate-matching backend service
 - Lightweight NATS messaging app for future event-driven workflows
-- Reusable `Helm.Base/` chart for service deployments
+- `helm-chart/` for the recommended Kubernetes deployment topology
 - Docker-ready
 
 ## Architecture
@@ -141,7 +141,7 @@ Endpoints:
 
 ## Docker images
 
-Primary CI/CD path:
+Primary image CI/CD path:
 
 - GitHub Actions triggers on `push` to `main` and `workflow_dispatch` only.
 - The workflow runs on a private self-hosted runner labeled `self-hosted,raspberry-pi`.
@@ -153,7 +153,7 @@ Primary CI/CD path:
 Files:
 
 - workflow: `.github/workflows/build-via-cloud-build.yml`
-- build config: `cloudbuild.yaml`
+- build config: `cloudbuild.remote.yaml`
 - GCP bootstrap Terraform: `deploy/terraform/gcp-cloud-build-runner/`
 - Pi runner compose service: `/home/andy/repositories/home-docker-compose/services/github-actions-runner.yml`
 
@@ -175,26 +175,42 @@ Security constraints implemented:
 - no `pull_request` trigger
 - no public inbound port on the Raspberry Pi runner
 - no Docker image build on the Raspberry Pi runner
-- Kubernetes and Helm examples use immutable `replace-with-git-sha` tags instead of `latest`
+- The Helm chart release uses the same repo semver tags as image builds and updates the chart default image tag to that release version
 
 Legacy local build agent:
 
 - `scripts/build_agent.py` and `deploy/systemd/job-aggregator-build-agent.service` remain in the repo as older local-build tooling.
 - Do not use that path for this Raspberry Pi architecture.
 
-## Helm examples
+## Helm chart
 
-Render each workload from the shared chart:
+`helm-chart/` now packages the recommended application topology in one chart:
+
+- `job-api` enabled by default at 2 replicas
+- `crawler-api` enabled by default with a direct toggle between lightweight and browser images
+- `candidate-api` enabled by default at 1 replica
+- `candidate-worker` enabled by default at 1 replica
+- `nats` disabled by default because `QUEUE_BACKEND=database` is still the live path
+- shared `/app/data` persistence made explicit through `sharedData`
+
+Render the default chart and the shipped override examples:
 
 ```bash
-helm template job-api ./Helm.Base -f ./Helm.Base/examples/job-api.values.yaml
-helm template crawler-api ./Helm.Base -f ./Helm.Base/examples/crawler-api.values.yaml
-helm template crawler-api ./Helm.Base -f ./Helm.Base/examples/crawler-api-browser.values.yaml
-helm template candidate-api ./Helm.Base -f ./Helm.Base/examples/candidate-api.values.yaml
-helm template candidate-worker ./Helm.Base -f ./Helm.Base/examples/candidate-worker.values.yaml
+helm template job-aggregator ./helm-chart
+helm template job-aggregator ./helm-chart -f ./helm-chart/examples/browser-crawler.values.yaml
+helm template job-aggregator ./helm-chart -f ./helm-chart/examples/existing-shared-pvc.values.yaml
+helm template job-aggregator ./helm-chart -f ./helm-chart/examples/nats.values.yaml
 ```
+
+Set `crawlerApi.useBrowserImage=true` to switch the crawler deployment from `ghcr.io/lynh7/job-aggregator-crawler-api` to `ghcr.io/lynh7/job-aggregator-crawler-api-browser`. When that toggle is on, the chart also sets `CRAWL_BACKEND=crawl4ai`.
+
+Chart releases are published from `.github/workflows/release-helm-chart.yml` when a repo tag like `v0.1.0` is pushed. The workflow reuses that semver for:
+
+- `helm-chart/Chart.yaml` `version`
+- `helm-chart/Chart.yaml` `appVersion`
+- `helm-chart/values.yaml` `global.imageTag`
 
 Recommended GitOps split:
 
-- this repo owns chart structure and example workload values
-- `home-server/applications` owns environment-specific overrides such as image tags, secrets, replicas, ingress, and storage class
+- this repo owns chart structure, defaults, and release automation
+- your GitOps repo owns environment-specific overrides such as secrets, ingress, storage class, replica tuning, and immutable image pinning when you want SHA-based rollouts

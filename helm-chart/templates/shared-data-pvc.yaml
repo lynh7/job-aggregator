@@ -1,0 +1,17 @@
+{{- if and .Values.sharedData.enabled (not .Values.sharedData.existingClaim) }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "job-aggregator.sharedDataClaimName" . }}
+  labels:
+    {{- include "job-aggregator.labels" (dict "root" . "name" "shared-data") | nindent 4 }}
+spec:
+  accessModes:
+    {{- toYaml .Values.sharedData.accessModes | nindent 4 }}
+  {{- with .Values.sharedData.storageClassName }}
+  storageClassName: {{ . }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.sharedData.size }}
+{{- end }}

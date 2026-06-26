@@ -1,0 +1,9 @@
+{{- if .Values.jobApi.enabled }}
+{{ include "job-aggregator.componentDeployment" (dict "root" . "name" "job-api" "component" .Values.jobApi) }}
+---
+{{ include "job-aggregator.componentService" (dict "root" . "name" "job-api" "component" .Values.jobApi) }}
+{{- if .Values.jobApi.autoscaling.enabled }}
+---
+{{ include "job-aggregator.componentHpa" (dict "root" . "name" "job-api" "component" .Values.jobApi) }}
+{{- end }}
+{{- end }}

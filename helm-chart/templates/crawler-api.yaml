@@ -1,0 +1,20 @@
+{{- if .Values.crawlerApi.enabled }}
+{{- $crawlerImageRepository := .Values.crawlerApi.image.repository -}}
+{{- if not $crawlerImageRepository -}}
+{{- $crawlerImageRepository = ternary .Values.crawlerApi.imageVariants.browser .Values.crawlerApi.imageVariants.lightweight .Values.crawlerApi.useBrowserImage -}}
+{{- end -}}
+{{- $crawlerComponent := merge (dict "image" (merge (dict "repository" $crawlerImageRepository) .Values.crawlerApi.image)) .Values.crawlerApi -}}
+{{- $defaultEnv := list
+  (dict "name" "CRAWL_BACKEND" "value" (ternary "crawl4ai" .Values.crawlerApi.backend .Values.crawlerApi.useBrowserImage))
+  (dict "name" "CORE_API_BASE_URL" "value" (printf "http://%s:%v" (include "job-aggregator.componentFullname" (dict "root" . "name" "job-api")) .Values.jobApi.service.port))
+  (dict "name" "CORE_API_INGEST_PATH" "value" .Values.crawlerApi.coreApi.ingestPath)
+  (dict "name" "CRAWLER_ENABLED_PROVIDERS" "value" .Values.crawlerApi.enabledProviders)
+-}}
+{{ include "job-aggregator.componentDeployment" (dict "root" . "name" "crawler-api" "component" $crawlerComponent "defaultEnv" $defaultEnv) }}
+---
+{{ include "job-aggregator.componentService" (dict "root" . "name" "crawler-api" "component" $crawlerComponent) }}
+{{- if $crawlerComponent.autoscaling.enabled }}
+---
+{{ include "job-aggregator.componentHpa" (dict "root" . "name" "crawler-api" "component" $crawlerComponent) }}
+{{- end }}
+{{- end }}

@@ -14,8 +14,7 @@ deployment packaging, or operational behavior.
 - `crawler_service/`: crawl4ai-backed crawler API for TopCV, ITViec, and future site adapters.
 - `candidate_service/`: CV intake API, parsing, matching, task queue worker.
 - `docker/`: service-specific Dockerfiles.
-- `k8s/`: per-service Kubernetes manifests.
-- `Helm.Base/`: reusable Helm chart and example overrides.
+- `helm-chart/`: Helm chart packaging the recommended application topology.
 - `tests/`: API, business-rule, export, and candidate workflow tests.
 - `references/cluster-deployment.md`: read when work touches Docker, Helm, Kubernetes, storage, scaling, GitOps handoff, or CI/CD build flow.
 
@@ -30,7 +29,7 @@ deployment packaging, or operational behavior.
 - The candidate API should remain stateless. Heavy work belongs in `candidate_service/worker.py`.
 - The live candidate queue path still defaults to `QUEUE_BACKEND=database`.
 - Target PostgreSQL-compatible production behavior, not SQLite assumptions.
-- When topology or build flow changes, update Dockerfiles, `k8s/`, Helm examples, CI workflows, README, and this skill together.
+- When topology or build flow changes, update Dockerfiles, `helm-chart/`, CI workflows, README, and this skill together.
 - The preferred image build path is GitHub Actions on a private self-hosted Raspberry Pi runner submitting to Google Cloud Build.
 - Push service images separately:
   - `ghcr.io/lynh7/job-aggregator-job-api`
@@ -82,11 +81,10 @@ find deploy/terraform/gcp-cloud-build-runner -maxdepth 2 -type f
 ### Render Helm workloads
 
 ```bash
-helm template job-api ./Helm.Base -f ./Helm.Base/examples/job-api.values.yaml
-helm template crawler-api ./Helm.Base -f ./Helm.Base/examples/crawler-api.values.yaml
-helm template crawler-api ./Helm.Base -f ./Helm.Base/examples/crawler-api-browser.values.yaml
-helm template candidate-api ./Helm.Base -f ./Helm.Base/examples/candidate-api.values.yaml
-helm template candidate-worker ./Helm.Base -f ./Helm.Base/examples/candidate-worker.values.yaml
+helm template job-aggregator ./helm-chart
+helm template job-aggregator ./helm-chart -f ./helm-chart/examples/browser-crawler.values.yaml
+helm template job-aggregator ./helm-chart -f ./helm-chart/examples/existing-shared-pvc.values.yaml
+helm template job-aggregator ./helm-chart -f ./helm-chart/examples/nats.values.yaml
 ```
 
 ## Change guidance
@@ -121,7 +119,7 @@ helm template candidate-worker ./Helm.Base -f ./Helm.Base/examples/candidate-wor
   - `docker/crawler-api-browser.Dockerfile`
   - `docker/candidate-api.Dockerfile`
   - `docker/candidate-worker.Dockerfile`
-- Keep service-specific image names, immutable tags, and ports aligned across Cloud Build, manifests, and Helm values.
+- Keep service-specific image names, immutable tags, and ports aligned across Cloud Build and Helm values.
 - Treat `/app/data` storage, PostgreSQL wiring, and ingest token wiring as deployment contract.
 
 ## Validation expectations

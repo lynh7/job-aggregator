@@ -1,0 +1,264 @@
+nameOverride: ""
+fullnameOverride: ""
+
+global:
+  imageTag: "0.1.0"
+  imagePullPolicy: IfNotPresent
+  imagePullSecrets: []
+  env: []
+  envFrom:
+    - secretRef:
+        name: job-aggregator-env
+  podAnnotations: {}
+  podLabels: {}
+
+serviceAccount:
+  create: false
+  annotations: {}
+  name: ""
+
+sharedData:
+  enabled: true
+  existingClaim: ""
+  accessModes:
+    - ReadWriteMany
+  size: 10Gi
+  storageClassName: ""
+  mountPath: /app/data
+
+jobApi:
+  enabled: true
+  replicaCount: 2
+  image:
+    repository: ghcr.io/lynh7/job-aggregator-job-api
+    tag: ""
+    pullPolicy: ""
+  command: []
+  args: []
+  containerPorts:
+    - name: http
+      containerPort: 8000
+  service:
+    enabled: true
+    type: ClusterIP
+    name: http
+    port: 8000
+    targetPort: 8000
+    extraPorts: []
+  env: []
+  envFrom: []
+  useGlobalEnv: true
+  useGlobalEnvFrom: true
+  resources: {}
+  volumeMounts: []
+  volumes: []
+  persistence:
+    useSharedData: true
+  podAnnotations: {}
+  podLabels: {}
+  readinessProbe:
+    httpGet:
+      path: /api/v1/health
+      port: 8000
+  livenessProbe:
+    httpGet:
+      path: /api/v1/health
+      port: 8000
+  autoscaling:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 4
+    targetCPUUtilizationPercentage: 80
+
+crawlerApi:
+  enabled: true
+  replicaCount: 1
+  backend: http
+  useBrowserImage: false
+  enabledProviders: topcv,itviec
+  coreApi:
+    ingestPath: /api/v1/ingest/raw-jobs
+  image:
+    repository: ""
+    tag: ""
+    pullPolicy: ""
+  imageVariants:
+    lightweight: ghcr.io/lynh7/job-aggregator-crawler-api
+    browser: ghcr.io/lynh7/job-aggregator-crawler-api-browser
+  command: []
+  args: []
+  containerPorts:
+    - name: http
+      containerPort: 8200
+  service:
+    enabled: true
+    type: ClusterIP
+    name: http
+    port: 8200
+    targetPort: 8200
+    extraPorts: []
+  env: []
+  envFrom: []
+  useGlobalEnv: true
+  useGlobalEnvFrom: true
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 512Mi
+  volumeMounts: []
+  volumes: []
+  persistence:
+    useSharedData: false
+  podAnnotations: {}
+  podLabels: {}
+  readinessProbe:
+    httpGet:
+      path: /api/v1/health
+      port: 8200
+  livenessProbe:
+    httpGet:
+      path: /api/v1/health
+      port: 8200
+  autoscaling:
+    enabled: false
+    minReplicas: 1
+    maxReplicas: 2
+    targetCPUUtilizationPercentage: 80
+
+candidateApi:
+  enabled: true
+  replicaCount: 1
+  queueBackend: database
+  image:
+    repository: ghcr.io/lynh7/job-aggregator-candidate-api
+    tag: ""
+    pullPolicy: ""
+  command: []
+  args: []
+  containerPorts:
+    - name: http
+      containerPort: 8100
+  service:
+    enabled: true
+    type: ClusterIP
+    name: http
+    port: 8100
+    targetPort: 8100
+    extraPorts: []
+  env: []
+  envFrom: []
+  useGlobalEnv: true
+  useGlobalEnvFrom: true
+  resources: {}
+  volumeMounts: []
+  volumes: []
+  persistence:
+    useSharedData: true
+  podAnnotations: {}
+  podLabels: {}
+  readinessProbe:
+    httpGet:
+      path: /api/v1/health
+      port: 8100
+  livenessProbe:
+    httpGet:
+      path: /api/v1/health
+      port: 8100
+  autoscaling:
+    enabled: false
+    minReplicas: 1
+    maxReplicas: 2
+    targetCPUUtilizationPercentage: 80
+
+candidateWorker:
+  enabled: true
+  replicaCount: 1
+  queueBackend: database
+  image:
+    repository: ghcr.io/lynh7/job-aggregator-candidate-worker
+    tag: ""
+    pullPolicy: ""
+  command: []
+  args: []
+  containerPorts: []
+  service:
+    enabled: false
+    type: ClusterIP
+    name: http
+    port: 80
+    targetPort: 80
+    extraPorts: []
+  env: []
+  envFrom: []
+  useGlobalEnv: true
+  useGlobalEnvFrom: true
+  resources: {}
+  volumeMounts: []
+  volumes: []
+  persistence:
+    useSharedData: true
+  podAnnotations: {}
+  podLabels: {}
+  readinessProbe: {}
+  livenessProbe: {}
+  autoscaling:
+    enabled: false
+    minReplicas: 1
+    maxReplicas: 2
+    targetCPUUtilizationPercentage: 80
+
+nats:
+  enabled: false
+  replicaCount: 1
+  image:
+    repository: nats
+    tag: 2.10-alpine
+    pullPolicy: ""
+  command: []
+  args:
+    - -js
+    - -sd
+    - /data
+  containerPorts:
+    - name: client
+      containerPort: 4222
+    - name: monitor
+      containerPort: 8222
+  service:
+    enabled: true
+    type: ClusterIP
+    name: client
+    port: 4222
+    targetPort: 4222
+    extraPorts:
+      - name: monitor
+        port: 8222
+        targetPort: 8222
+        protocol: TCP
+  env: []
+  envFrom: []
+  useGlobalEnv: false
+  useGlobalEnvFrom: false
+  resources: {}
+  volumeMounts: []
+  volumes: []
+  persistence:
+    enabled: true
+    existingClaim: ""
+    accessModes:
+      - ReadWriteOnce
+    size: 10Gi
+    storageClassName: ""
+    useSharedData: false
+  podAnnotations: {}
+  podLabels: {}
+  readinessProbe: {}
+  livenessProbe: {}
+  autoscaling:
+    enabled: false
+    minReplicas: 1
+    maxReplicas: 1
+    targetCPUUtilizationPercentage: 80

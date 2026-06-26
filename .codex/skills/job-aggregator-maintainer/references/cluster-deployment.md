@@ -28,7 +28,7 @@ Recommended split:
 - `job-aggregator` repo owns app code, Dockerfiles, Cloud Build config, GitHub workflow logic, Helm chart structure, chart defaults, ports, probes, env variable names, and service topology.
 - GitOps repo owns environment-specific values: immutable image tags, replica counts, ingress hosts, secret references, storage class, resource sizing, and rollout objects.
 
-Use raw `k8s/` manifests as reference. Use Helm or the GitOps repo as deployment source of truth.
+Use `helm-chart/` or the GitOps repo as the deployment source of truth.
 
 ## Current CI/CD path
 
@@ -139,7 +139,7 @@ Prioritize these before relying on the cluster deploy:
 3. Add or verify readiness/liveness probes, requests/limits, and ingress/auth decisions.
 4. Make storage behavior explicit in chart values.
 5. Make crawler scheduling explicit: manual API trigger, CronJob, or external scheduler.
-6. Keep Dockerfiles, README, `k8s/`, and Helm values aligned whenever topology changes.
+6. Keep Dockerfiles, README, Helm values, and release workflows aligned whenever topology changes.
 
 ## Validation checklist
 

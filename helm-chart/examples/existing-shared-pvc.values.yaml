@@ -1,0 +1,3 @@
+sharedData:
+  enabled: false
+  existingClaim: job-aggregator-shared-data

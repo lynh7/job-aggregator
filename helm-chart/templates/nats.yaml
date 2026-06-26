@@ -1,0 +1,25 @@
+{{- if .Values.nats.enabled }}
+{{- $defaultVolumeMounts := list (dict "name" "nats-data" "mountPath" "/data") -}}
+{{- $defaultVolumes := list (dict "name" "nats-data" "persistentVolumeClaim" (dict "claimName" (include "job-aggregator.natsClaimName" .))) -}}
+{{ include "job-aggregator.componentDeployment" (dict "root" . "name" "nats" "component" .Values.nats "defaultVolumeMounts" $defaultVolumeMounts "defaultVolumes" $defaultVolumes) }}
+---
+{{ include "job-aggregator.componentService" (dict "root" . "name" "nats" "component" .Values.nats) }}
+{{- if and .Values.nats.persistence.enabled (not .Values.nats.persistence.existingClaim) }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "job-aggregator.natsClaimName" . }}
+  labels:
+    {{- include "job-aggregator.labels" (dict "root" . "name" "nats") | nindent 4 }}
+spec:
+  accessModes:
+    {{- toYaml .Values.nats.persistence.accessModes | nindent 4 }}
+  {{- with .Values.nats.persistence.storageClassName }}
+  storageClassName: {{ . }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.nats.persistence.size }}
+{{- end }}
+{{- end }}
