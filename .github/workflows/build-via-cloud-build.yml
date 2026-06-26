@@ -55,29 +55,49 @@ jobs:
 
       - name: Stop if monthly Cloud Build usage too high
         env:
-          PROJECT_ID: ${{ env.GCP_PROJECT_ID }}
-          MAX_BUILD_MINUTES: "2200"
+          GCP_PROJECT_INPUT: ${{ env.GCP_PROJECT_ID }}
+          CLOUD_BUILD_MAX_MINUTES: "2200"
         run: |
           python3 - <<'PY'
           import datetime
           import json
           import os
+          import re
           import subprocess
           import sys
 
-          project = os.environ["PROJECT_ID"]
-          limit = int(os.environ["MAX_BUILD_MINUTES"])
+          project_input = os.environ["GCP_PROJECT_INPUT"]
+          raw_limit = os.environ.get("CLOUD_BUILD_MAX_MINUTES", "").strip()
+
+          if not re.fullmatch(r"\d+", raw_limit):
+              raise RuntimeError(
+                  f"CLOUD_BUILD_MAX_MINUTES invalid: {raw_limit!r}. Expected digits like '2200'."
+              )
+
+          limit = int(raw_limit)
+
+          project_id = subprocess.check_output(
+              [
+                  "gcloud", "projects", "describe", project_input,
+                  "--format=value(projectId)"
+              ],
+              text=True,
+          ).strip()
 
           now = datetime.datetime.now(datetime.UTC)
-          month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat().replace("+00:00", "Z")
+          month_start = now.replace(
+              day=1, hour=0, minute=0, second=0, microsecond=0
+          ).isoformat().replace("+00:00", "Z")
 
-          cmd = [
-              "gcloud", "builds", "list",
-              f"--project={project}",
-              f"--filter=createTime>={month_start}",
-              "--format=json",
-          ]
-          out = subprocess.check_output(cmd, text=True)
+          out = subprocess.check_output(
+              [
+                  "gcloud", "builds", "list",
+                  f"--project={project_id}",
+                  f"--filter=createTime>={month_start}",
+                  "--format=json",
+              ],
+              text=True,
+          )
           builds = json.loads(out)
 
           total_seconds = 0
@@ -91,6 +111,7 @@ jobs:
               total_seconds += max(0, (f - s).total_seconds())
 
           minutes = total_seconds / 60
+          print(f"Resolved project ID: {project_id}")
           print(f"Cloud Build minutes this month: {minutes:.1f}")
           print(f"Guard limit: {limit}")
 
