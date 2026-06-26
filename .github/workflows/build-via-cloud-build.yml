@@ -52,25 +52,30 @@ jobs:
 
       - name: Verify gcloud installation
         run: gcloud --version
+
       - name: Stop if monthly Cloud Build usage too high
         env:
           PROJECT_ID: ${{ env.GCP_PROJECT_ID }}
           MAX_BUILD_MINUTES: "2200"
         run: |
           python3 - <<'PY'
-          import json, subprocess, datetime, sys
+          import datetime
+          import json
+          import os
+          import subprocess
+          import sys
 
-          project = "${PROJECT_ID}"
-          limit = int("${MAX_BUILD_MINUTES}")
+          project = os.environ["PROJECT_ID"]
+          limit = int(os.environ["MAX_BUILD_MINUTES"])
 
-          now = datetime.datetime.utcnow()
-          month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat() + "Z"
+          now = datetime.datetime.now(datetime.UTC)
+          month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat().replace("+00:00", "Z")
 
           cmd = [
               "gcloud", "builds", "list",
               f"--project={project}",
               f"--filter=createTime>={month_start}",
-              "--format=json"
+              "--format=json",
           ]
           out = subprocess.check_output(cmd, text=True)
           builds = json.loads(out)
