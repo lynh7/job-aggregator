@@ -19,7 +19,7 @@ concurrency:
 
 env:
   GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
-  GHCR_IMAGE: ghcr.io/trthienan17/my-app
+  GHCR_IMAGE: ghcr.io/lynh7/job-aggregator
   BUILD_CONTEXT: .
   DOCKERFILE: docker/job-api.Dockerfile
 
