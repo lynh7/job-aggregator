@@ -125,9 +125,15 @@ jobs:
           CLOUDSDK_CORE_DISABLE_PROMPTS: "1"
         run: |
           echo "Submitting Cloud Build for ${GHCR_IMAGE}:${GITHUB_SHA}"
+
           PROJECT_ID="$(gcloud projects describe "${GCP_PROJECT_ID}" --format='value(projectId)')"
+          SHORT_SHA="${GITHUB_SHA::7}"
+
           echo "Using project: ${PROJECT_ID}"
+          echo "Using repo: ${GITHUB_REPOSITORY}@${GITHUB_SHA}"
+
           gcloud builds submit \
             --project="${PROJECT_ID}" \
-            --config=cloudbuild.yaml \
-            --substitutions=COMMIT_SHA="${GITHUB_SHA}",SHORT_SHA="${GITHUB_SHA::7}",_GHCR_IMAGE="${GHCR_IMAGE}",_DOCKERFILE="${DOCKERFILE}",_CONTEXT="${BUILD_CONTEXT}",_GITHUB_REPOSITORY="${GITHUB_REPOSITORY}",_GITHUB_REF_NAME="${GITHUB_REF_NAME}"
+            --no-source \
+            --config=cloudbuild.remote.yaml \
+            --substitutions=_REPO_URL="https://github.com/${GITHUB_REPOSITORY}.git",_REVISION="${GITHUB_SHA}",_SHORT_SHA="${SHORT_SHA}",_GHCR_IMAGE="${GHCR_IMAGE}",_DOCKERFILE="${DOCKERFILE}",_CONTEXT="${BUILD_CONTEXT}",_GITHUB_REF_NAME="${GITHUB_REF_NAME}"
