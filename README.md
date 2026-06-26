@@ -204,7 +204,7 @@ helm template job-aggregator ./helm-chart -f ./helm-chart/examples/nats.values.y
 
 Set `crawlerApi.useBrowserImage=true` to switch the crawler deployment from `ghcr.io/lynh7/job-aggregator-crawler-api` to `ghcr.io/lynh7/job-aggregator-crawler-api-browser`. When that toggle is on, the chart also sets `CRAWL_BACKEND=crawl4ai`.
 
-Chart releases are published from `.github/workflows/release-helm-chart.yml` when a repo tag like `v0.1.0` is pushed. The workflow reuses that semver for:
+Chart releases are published from `.github/workflows/release-helm-chart.yml` after `build-via-cloud-build` completes successfully and creates a repo tag like `v0.1.0`. The workflow reuses that semver for:
 
 - `helm-chart/Chart.yaml` `version`
 - `helm-chart/Chart.yaml` `appVersion`

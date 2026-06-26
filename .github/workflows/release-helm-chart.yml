@@ -1,9 +1,11 @@
 name: Release Helm Chart
 
 on:
-  push:
-    tags:
-      - "v*"
+  workflow_run:
+    workflows:
+      - Build Container Via Cloud Build
+    types:
+      - completed
   workflow_dispatch:
     inputs:
       version:
@@ -19,6 +21,14 @@ concurrency:
 
 jobs:
   release:
+    if: >-
+      ${{
+        github.event_name == 'workflow_dispatch' ||
+        (
+          github.event.workflow_run.conclusion == 'success' &&
+          github.event.workflow_run.head_branch == 'main'
+        )
+      }}
     runs-on:
       - self-hosted
     steps:
@@ -35,46 +45,86 @@ jobs:
         env:
           EVENT_NAME: ${{ github.event_name }}
           INPUT_VERSION: ${{ github.event.inputs.version }}
-          REF_NAME: ${{ github.ref_name }}
+          WORKFLOW_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
           python3 - <<'PY'
           import os
           import re
+          import subprocess
           from pathlib import Path
 
           event_name = os.environ["EVENT_NAME"]
-          raw = os.environ["INPUT_VERSION"].strip() if event_name == "workflow_dispatch" else os.environ["REF_NAME"].strip()
-          match = re.fullmatch(r"v?(\d+\.\d+\.\d+)", raw)
-          if not match:
-              raise SystemExit(f"Expected version like v0.1.0 or 0.1.0, got: {raw!r}")
-
-          semver = match.group(1)
-          git_tag = f"v{semver}"
-
           output = Path(os.environ["GITHUB_OUTPUT"])
+
+          should_release = False
+          semver = None
+          git_tag = None
+
+          if event_name == "workflow_dispatch":
+              raw = os.environ["INPUT_VERSION"].strip()
+              match = re.fullmatch(r"v?(\d+\.\d+\.\d+)", raw)
+              if not match:
+                  raise SystemExit(f"Expected version like v0.1.0 or 0.1.0, got: {raw!r}")
+              semver = match.group(1)
+              git_tag = f"v{semver}"
+              should_release = True
+          else:
+              head_sha = os.environ["WORKFLOW_HEAD_SHA"].strip()
+              if not head_sha:
+                  raise SystemExit("workflow_run.head_sha is missing.")
+
+              subprocess.run(["git", "fetch", "--tags", "--force"], check=True)
+              raw_tags = subprocess.check_output(
+                  ["git", "tag", "--points-at", head_sha],
+                  text=True,
+              ).splitlines()
+              tags = sorted(
+                  tag.strip() for tag in raw_tags
+                  if re.fullmatch(r"v\d+\.\d+\.\d+", tag.strip())
+              )
+              if not tags:
+                  print(
+                      f"No semver tag found on workflow head SHA {head_sha}; "
+                      "skipping Helm chart release."
+                  )
+              else:
+                  git_tag = tags[-1]
+                  semver = git_tag.removeprefix("v")
+                  should_release = True
+
           with output.open("a", encoding="utf-8") as fh:
-              fh.write(f"semver={semver}\n")
-              fh.write(f"git_tag={git_tag}\n")
+              fh.write(f"should_release={'true' if should_release else 'false'}\n")
+              if should_release:
+                  fh.write(f"semver={semver}\n")
+                  fh.write(f"git_tag={git_tag}\n")
           PY
 
-      - name: Update chart metadata and default image tag
+      - name: Prepare release chart
+        if: ${{ steps.version.outputs.should_release == 'true' }}
         env:
           VERSION_SEMVER: ${{ steps.version.outputs.semver }}
         run: |
           python3 - <<'PY'
+          import shutil
           import os
           import re
           from pathlib import Path
 
           version = os.environ["VERSION_SEMVER"]
+          source_dir = Path("helm-chart")
+          release_dir = Path(".release/helm-chart")
 
-          chart_path = Path("helm-chart/Chart.yaml")
+          if release_dir.exists():
+              shutil.rmtree(release_dir)
+          shutil.copytree(source_dir, release_dir)
+
+          chart_path = release_dir / "Chart.yaml"
           chart_text = chart_path.read_text(encoding="utf-8")
           chart_text = re.sub(r"(?m)^version:\s*.*$", f"version: {version}", chart_text, count=1)
           chart_text = re.sub(r'(?m)^appVersion:\s*.*$', f'appVersion: "{version}"', chart_text, count=1)
           chart_path.write_text(chart_text, encoding="utf-8")
 
-          values_path = Path("helm-chart/values.yaml")
+          values_path = release_dir / "values.yaml"
           values_text = values_path.read_text(encoding="utf-8")
           values_text = re.sub(
               r'(?m)^  imageTag:\s*".*"$',
@@ -86,20 +136,69 @@ jobs:
           PY
 
       - name: Validate default chart render
-        run: helm template job-aggregator ./helm-chart
+        if: ${{ steps.version.outputs.should_release == 'true' }}
+        run: helm template job-aggregator ./.release/helm-chart
 
       - name: Validate browser crawler render
-        run: helm template job-aggregator ./helm-chart -f ./helm-chart/examples/browser-crawler.values.yaml
+        if: ${{ steps.version.outputs.should_release == 'true' }}
+        run: helm template job-aggregator ./.release/helm-chart -f ./.release/helm-chart/examples/browser-crawler.values.yaml
 
       - name: Validate shared PVC override render
-        run: helm template job-aggregator ./helm-chart -f ./helm-chart/examples/existing-shared-pvc.values.yaml
+        if: ${{ steps.version.outputs.should_release == 'true' }}
+        run: helm template job-aggregator ./.release/helm-chart -f ./.release/helm-chart/examples/existing-shared-pvc.values.yaml
 
       - name: Validate NATS render
-        run: helm template job-aggregator ./helm-chart -f ./helm-chart/examples/nats.values.yaml
+        if: ${{ steps.version.outputs.should_release == 'true' }}
+        run: helm template job-aggregator ./.release/helm-chart -f ./.release/helm-chart/examples/nats.values.yaml
 
-      - name: Package and publish chart
-        uses: helm/chart-releaser-action@v1.6.0
-        with:
-          charts_dir: .
+      - name: Package chart
+        if: ${{ steps.version.outputs.should_release == 'true' }}
         env:
-          CR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION_SEMVER: ${{ steps.version.outputs.semver }}
+        run: |
+          mkdir -p .release/packages
+          helm package ./.release/helm-chart --destination ./.release/packages
+          test -f "./.release/packages/job-aggregator-${VERSION_SEMVER}.tgz"
+
+      - name: Publish GitHub Pages chart repo
+        if: ${{ steps.version.outputs.should_release == 'true' }}
+        env:
+          VERSION_SEMVER: ${{ steps.version.outputs.semver }}
+          PAGES_URL: https://lynh7.github.io/job-aggregator
+        run: |
+          set -euo pipefail
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+
+          rm -rf .release/gh-pages
+          if git ls-remote --exit-code --heads origin gh-pages >/dev/null 2>&1; then
+            git fetch origin gh-pages
+            git worktree add .release/gh-pages origin/gh-pages
+            (
+              cd .release/gh-pages
+              git checkout -B gh-pages origin/gh-pages
+            )
+          else
+            git worktree add --detach .release/gh-pages
+            (
+              cd .release/gh-pages
+              git checkout --orphan gh-pages
+              find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+            )
+          fi
+
+          cp ./.release/packages/*.tgz ./.release/gh-pages/
+          touch ./.release/gh-pages/.nojekyll
+          helm repo index ./.release/gh-pages --url "${PAGES_URL}"
+
+          (
+            cd .release/gh-pages
+            git add .
+            if git diff --cached --quiet; then
+              echo "No chart repository changes to publish."
+              exit 0
+            fi
+            git commit -m "Release Helm chart v${VERSION_SEMVER}"
+            git push origin gh-pages
+          )
