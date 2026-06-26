@@ -16,10 +16,17 @@ steps:
       - -ceu
       - |
         cd /workspace/src
-
+        test -f "${_DOCKERFILE}"
         echo "$$GHCR_TOKEN" | docker login ghcr.io --username "${_GHCR_USERNAME}" --password-stdin
 
+  - name: gcr.io/cloud-builders/docker
+    entrypoint: bash
+    args:
+      - -ceu
+      - |
+        cd /workspace/src
         docker build \
+          --progress=plain \
           --label "org.opencontainers.image.source=https://github.com/${_GITHUB_REPOSITORY}" \
           --label "org.opencontainers.image.revision=${_REVISION}" \
           -f "${_DOCKERFILE}" \
@@ -28,6 +35,11 @@ steps:
           -t "${_GHCR_IMAGE}:latest" \
           "${_CONTEXT}"
 
+  - name: gcr.io/cloud-builders/docker
+    entrypoint: bash
+    args:
+      - -ceu
+      - |
         docker push "${_GHCR_IMAGE}:${_REVISION}"
         docker push "${_GHCR_IMAGE}:${_SHORT_SHA}"
         docker push "${_GHCR_IMAGE}:latest"
