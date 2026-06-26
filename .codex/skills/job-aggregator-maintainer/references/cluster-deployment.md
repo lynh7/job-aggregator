@@ -32,11 +32,23 @@ Use raw `k8s/` manifests as reference. Use Helm or the GitOps repo as deployment
 
 ## Current CI/CD path
 
-- GitHub Actions triggers only on `push` to `main` and `workflow_dispatch`.
-- Workflow runner target: private self-hosted runner with labels `self-hosted,raspberry-pi`.
+- GitHub Actions triggers on `push` to `main` when image-producing paths change and on `workflow_dispatch`.
+- `workflow_dispatch` builds every service image.
+- `push` builds only the affected images:
+  - `app/**` or `docker/job-api.Dockerfile` -> `job-api`
+  - `candidate_service/**`, `docker/candidate-api.Dockerfile`, or `docker/candidate-worker.Dockerfile` -> `candidate-api` and `candidate-worker`
+  - `crawler_service/**`, `docker/crawler-api.Dockerfile`, or `docker/crawler-api-browser.Dockerfile` -> `crawler-api` and `crawler-api-browser`
+  - shared packaging files such as `pyproject.toml`, `.dockerignore`, `cloudbuild.remote.yaml`, or the workflow itself -> build all images
+- Workflow runner target: private self-hosted runner with label `self-hosted`.
 - The Raspberry Pi runner must not build Docker images locally. It only authenticates to GCP and runs `gcloud builds submit`.
 - Google Cloud Build performs the Docker build and pushes GHCR tags.
-- `cloudbuild.yaml` logs in to GHCR using Secret Manager secret `ghcr-token`.
+- `cloudbuild.remote.yaml` logs in to GHCR using Secret Manager secret `ghcr-token`.
+- Published GHCR repositories:
+  - `ghcr.io/lynh7/job-aggregator-job-api`
+  - `ghcr.io/lynh7/job-aggregator-candidate-api`
+  - `ghcr.io/lynh7/job-aggregator-candidate-worker`
+  - `ghcr.io/lynh7/job-aggregator-crawler-api`
+  - `ghcr.io/lynh7/job-aggregator-crawler-api-browser`
 - Kubernetes-facing values should pin immutable Git SHA tags, not rely on `latest`.
 
 ## Recommended crawler topology

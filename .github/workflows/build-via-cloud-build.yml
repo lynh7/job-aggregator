@@ -8,6 +8,11 @@ on:
       - 'app/**'
       - 'candidate_service/**'
       - 'crawler_service/**'
+      - 'docker/**'
+      - 'pyproject.toml'
+      - '.dockerignore'
+      - 'cloudbuild.remote.yaml'
+      - '.github/workflows/build-via-cloud-build.yml'
   workflow_dispatch:
 
 permissions:
@@ -19,15 +24,145 @@ concurrency:
 
 env:
   GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
-  GHCR_IMAGE: ghcr.io/lynh7/job-aggregator
-  BUILD_CONTEXT: .
-  DOCKERFILE: docker/job-api.Dockerfile
 
 jobs:
+  detect-images:
+    runs-on:
+      - self-hosted
+    outputs:
+      matrix: ${{ steps.detect.outputs.matrix }}
+      count: ${{ steps.detect.outputs.count }}
+      names: ${{ steps.detect.outputs.names }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect images to build
+        id: detect
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BEFORE_SHA: ${{ github.event.before }}
+          CURRENT_SHA: ${{ github.sha }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import subprocess
+          from pathlib import Path
+
+          images = {
+              'job-api': {
+                  'dockerfile': 'docker/job-api.Dockerfile',
+                  'image': 'ghcr.io/lynh7/job-aggregator-job-api',
+              },
+              'candidate-api': {
+                  'dockerfile': 'docker/candidate-api.Dockerfile',
+                  'image': 'ghcr.io/lynh7/job-aggregator-candidate-api',
+              },
+              'candidate-worker': {
+                  'dockerfile': 'docker/candidate-worker.Dockerfile',
+                  'image': 'ghcr.io/lynh7/job-aggregator-candidate-worker',
+              },
+              'crawler-api': {
+                  'dockerfile': 'docker/crawler-api.Dockerfile',
+                  'image': 'ghcr.io/lynh7/job-aggregator-crawler-api',
+              },
+              'crawler-api-browser': {
+                  'dockerfile': 'docker/crawler-api-browser.Dockerfile',
+                  'image': 'ghcr.io/lynh7/job-aggregator-crawler-api-browser',
+              },
+          }
+
+          event_name = os.environ['EVENT_NAME']
+          before_sha = os.environ.get('BEFORE_SHA', '').strip()
+          current_sha = os.environ['CURRENT_SHA']
+
+          def all_components(reason: str):
+              names = list(images)
+              print(reason)
+              return names
+
+          if event_name == 'workflow_dispatch':
+              selected = all_components('Manual dispatch: build every image.')
+          elif not before_sha or set(before_sha) == {'0'}:
+              selected = all_components('No usable previous SHA: build every image.')
+          else:
+              diff = subprocess.check_output(
+                  ['git', 'diff', '--name-only', f'{before_sha}..{current_sha}'],
+                  text=True,
+              )
+              changed = [line.strip() for line in diff.splitlines() if line.strip()]
+              print('Changed files:')
+              for path in changed:
+                  print(f'  - {path}')
+
+              selected = set()
+              shared_all_files = {
+                  '.dockerignore',
+                  'cloudbuild.remote.yaml',
+                  'pyproject.toml',
+                  '.github/workflows/build-via-cloud-build.yml',
+              }
+              if any(path in shared_all_files for path in changed):
+                  selected = set(images)
+              else:
+                  for path in changed:
+                      if path.startswith('app/') or path == 'docker/job-api.Dockerfile':
+                          selected.add('job-api')
+                      if path.startswith('candidate_service/') or path in {
+                          'docker/candidate-api.Dockerfile',
+                          'docker/candidate-worker.Dockerfile',
+                      }:
+                          selected.update({'candidate-api', 'candidate-worker'})
+                      if path.startswith('crawler_service/') or path in {
+                          'docker/crawler-api.Dockerfile',
+                          'docker/crawler-api-browser.Dockerfile',
+                      }:
+                          selected.update({'crawler-api', 'crawler-api-browser'})
+
+              selected = sorted(selected)
+              if selected:
+                  print('Selected images: ' + ', '.join(selected))
+              else:
+                  print('No image-producing paths changed.')
+
+          matrix = [
+              {
+                  'name': name,
+                  'dockerfile': images[name]['dockerfile'],
+                  'image': images[name]['image'],
+                  'context': '.',
+              }
+              for name in selected
+          ]
+
+          output = Path(os.environ['GITHUB_OUTPUT'])
+          with output.open('a', encoding='utf-8') as fh:
+              fh.write(f"matrix={json.dumps(matrix, separators=(',', ':'))}\n")
+              fh.write(f"count={len(matrix)}\n")
+              fh.write(f"names={','.join(item['name'] for item in matrix)}\n")
+          PY
+
+      - name: Show build selection
+        run: |
+          echo "Image count: ${{ steps.detect.outputs.count }}"
+          echo "Images: ${{ steps.detect.outputs.names }}"
+
   cloud-build:
+    needs:
+      - detect-images
+    if: ${{ needs.detect-images.outputs.count != '0' }}
     runs-on:
       - self-hosted
     timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJson(needs.detect-images.outputs.matrix) }}
+    env:
+      GHCR_USERNAME: trthienan17
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -42,7 +177,7 @@ jobs:
           PYTHON_BIN=$(python3 -c 'import sys; print(sys.executable)')
           echo "Using Python: ${PYTHON_BIN}"
           ${PYTHON_BIN} --version
-          echo "CLOUDSDK_PYTHON=${PYTHON_BIN}" >> $GITHUB_ENV
+          echo "CLOUDSDK_PYTHON=${PYTHON_BIN}" >> "$GITHUB_ENV"
 
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
@@ -60,7 +195,7 @@ jobs:
       - name: Stop if monthly Cloud Build usage too high
         env:
           GCP_PROJECT_INPUT: ${{ env.GCP_PROJECT_ID }}
-          CLOUD_BUILD_MAX_MINUTES: "2200"
+          CLOUD_BUILD_MAX_MINUTES: '2200'
         run: |
           python3 - <<'PY'
           import datetime
@@ -70,10 +205,10 @@ jobs:
           import subprocess
           import sys
 
-          project_input = os.environ["GCP_PROJECT_INPUT"]
-          raw_limit = os.environ.get("CLOUD_BUILD_MAX_MINUTES", "").strip()
+          project_input = os.environ['GCP_PROJECT_INPUT']
+          raw_limit = os.environ.get('CLOUD_BUILD_MAX_MINUTES', '').strip()
 
-          if not re.fullmatch(r"\d+", raw_limit):
+          if not re.fullmatch(r'\d+', raw_limit):
               raise RuntimeError(
                   f"CLOUD_BUILD_MAX_MINUTES invalid: {raw_limit!r}. Expected digits like '2200'."
               )
@@ -82,8 +217,8 @@ jobs:
 
           project_id = subprocess.check_output(
               [
-                  "gcloud", "projects", "describe", project_input,
-                  "--format=value(projectId)"
+                  'gcloud', 'projects', 'describe', project_input,
+                  '--format=value(projectId)'
               ],
               text=True,
           ).strip()
@@ -91,53 +226,68 @@ jobs:
           now = datetime.datetime.now(datetime.UTC)
           month_start = now.replace(
               day=1, hour=0, minute=0, second=0, microsecond=0
-          ).isoformat().replace("+00:00", "Z")
+          ).isoformat().replace('+00:00', 'Z')
 
           out = subprocess.check_output(
               [
-                  "gcloud", "builds", "list",
-                  f"--project={project_id}",
-                  f"--filter=createTime>={month_start}",
-                  "--format=json",
+                  'gcloud', 'builds', 'list',
+                  f'--project={project_id}',
+                  f'--filter=createTime>={month_start}',
+                  '--format=json',
               ],
               text=True,
           )
           builds = json.loads(out)
 
           total_seconds = 0
-          for b in builds:
-              start = b.get("startTime")
-              finish = b.get("finishTime")
+          for build in builds:
+              start = build.get('startTime')
+              finish = build.get('finishTime')
               if not start or not finish:
                   continue
-              s = datetime.datetime.fromisoformat(start.replace("Z", "+00:00"))
-              f = datetime.datetime.fromisoformat(finish.replace("Z", "+00:00"))
+              s = datetime.datetime.fromisoformat(start.replace('Z', '+00:00'))
+              f = datetime.datetime.fromisoformat(finish.replace('Z', '+00:00'))
               total_seconds += max(0, (f - s).total_seconds())
 
           minutes = total_seconds / 60
-          print(f"Resolved project ID: {project_id}")
-          print(f"Cloud Build minutes this month: {minutes:.1f}")
-          print(f"Guard limit: {limit}")
+          print(f'Resolved project ID: {project_id}')
+          print(f'Cloud Build minutes this month: {minutes:.1f}')
+          print(f'Guard limit: {limit}')
 
           if minutes >= limit:
-              print("Build blocked: monthly Cloud Build usage limit reached.", file=sys.stderr)
+              print('Build blocked: monthly Cloud Build usage limit reached.', file=sys.stderr)
               sys.exit(1)
           PY
-          
+
       - name: Submit remote build
         env:
-          CLOUDSDK_CORE_DISABLE_PROMPTS: "1"
+          CLOUDSDK_CORE_DISABLE_PROMPTS: '1'
+          GHCR_IMAGE: ${{ matrix.image }}
+          DOCKERFILE: ${{ matrix.dockerfile }}
+          BUILD_CONTEXT: ${{ matrix.context }}
         run: |
           echo "Submitting Cloud Build for ${GHCR_IMAGE}:${GITHUB_SHA}"
+          echo "Component: ${{ matrix.name }}"
 
           PROJECT_ID="$(gcloud projects describe "${GCP_PROJECT_ID}" --format='value(projectId)')"
           SHORT_SHA="${GITHUB_SHA::7}"
 
           echo "Using project: ${PROJECT_ID}"
           echo "Using repo: ${GITHUB_REPOSITORY}@${GITHUB_SHA}"
+          echo "Using Dockerfile: ${DOCKERFILE}"
 
           gcloud builds submit \
             --project="${PROJECT_ID}" \
             --no-source \
             --config=cloudbuild.remote.yaml \
-            --substitutions=_REPO_URL="https://github.com/${GITHUB_REPOSITORY}.git",_REVISION="${GITHUB_SHA}",_SHORT_SHA="${SHORT_SHA}",_GHCR_IMAGE="${GHCR_IMAGE}",_GHCR_USERNAME="trthienan17",_DOCKERFILE="${DOCKERFILE}",_CONTEXT="${BUILD_CONTEXT}",_GITHUB_REPOSITORY="${GITHUB_REPOSITORY}"
+            --substitutions=_REPO_URL="https://github.com/${GITHUB_REPOSITORY}.git",_REVISION="${GITHUB_SHA}",_SHORT_SHA="${SHORT_SHA}",_GHCR_IMAGE="${GHCR_IMAGE}",_GHCR_USERNAME="${GHCR_USERNAME}",_DOCKERFILE="${DOCKERFILE}",_CONTEXT="${BUILD_CONTEXT}",_GITHUB_REPOSITORY="${GITHUB_REPOSITORY}"
+
+  no-op:
+    needs:
+      - detect-images
+    if: ${{ needs.detect-images.outputs.count == '0' }}
+    runs-on:
+      - self-hosted
+    steps:
+      - name: No images selected
+        run: echo 'No image-producing paths changed; skipping remote builds.'
