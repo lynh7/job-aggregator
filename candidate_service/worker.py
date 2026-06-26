@@ -9,7 +9,6 @@ from app.models import Candidate
 from candidate_service.service import enqueue_rematch, process_candidate_submission, process_job_application, rematch_candidate
 from candidate_service.task_queue import claim_candidate_task, complete_candidate_task, fail_candidate_task
 
-
 def process_one_task(session: Session, worker_id: str) -> bool:
     task = claim_candidate_task(session, worker_id=worker_id)
     if task is None:
