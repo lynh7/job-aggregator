@@ -7,10 +7,6 @@ on:
     types:
       - completed
   workflow_dispatch:
-    inputs:
-      version:
-        description: Semver to release, without the leading v
-        required: true
 
 permissions:
   contents: write
@@ -22,13 +18,12 @@ concurrency:
 jobs:
   release:
     if: >-
-      ${{
-        github.event_name == 'workflow_dispatch' ||
-        (
-          github.event.workflow_run.conclusion == 'success' &&
-          github.event.workflow_run.head_branch == 'main'
-        )
-      }}
+      ${{ github.event_name == 'workflow_dispatch' ||
+          (
+            github.event.workflow_run.conclusion == 'success' &&
+            github.event.workflow_run.head_branch == 'main'
+          )
+        }}
     runs-on:
       - self-hosted
     steps:
@@ -44,7 +39,6 @@ jobs:
         id: version
         env:
           EVENT_NAME: ${{ github.event_name }}
-          INPUT_VERSION: ${{ github.event.inputs.version }}
           WORKFLOW_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
           python3 - <<'PY'
@@ -56,30 +50,54 @@ jobs:
           event_name = os.environ["EVENT_NAME"]
           output = Path(os.environ["GITHUB_OUTPUT"])
 
+          def resolve_next_patch_tag() -> tuple[str, str]:
+              tags = subprocess.check_output(
+                  ["git", "tag", "--list", "v*", "--sort=version:refname"],
+                  text=True,
+              ).splitlines()
+              tags = [
+                  tag.strip()
+                  for tag in tags
+                  if re.fullmatch(r"v\d+\.\d+\.\d+", tag.strip())
+              ]
+              latest = tags[-1] if tags else None
+
+              if latest is None:
+                  next_tag = "v0.1.0"
+              else:
+                  match = re.fullmatch(r"v(\d+)\.(\d+)\.(\d+)", latest)
+                  if not match:
+                      raise RuntimeError(
+                          f"Latest version tag has unexpected format: {latest!r}"
+                      )
+                  major, minor, patch = map(int, match.groups())
+                  next_tag = f"v{major}.{minor}.{patch + 1}"
+
+              print(f"Latest version tag: {latest or '<none>'}")
+              print(f"Next version tag: {next_tag}")
+              return next_tag, next_tag.removeprefix("v")
+
           should_release = False
           semver = None
           git_tag = None
 
+          subprocess.run(["git", "fetch", "--tags", "--force"], check=True)
+
           if event_name == "workflow_dispatch":
-              raw = os.environ["INPUT_VERSION"].strip()
-              match = re.fullmatch(r"v?(\d+\.\d+\.\d+)", raw)
-              if not match:
-                  raise SystemExit(f"Expected version like v0.1.0 or 0.1.0, got: {raw!r}")
-              semver = match.group(1)
-              git_tag = f"v{semver}"
+              git_tag, semver = resolve_next_patch_tag()
               should_release = True
           else:
               head_sha = os.environ["WORKFLOW_HEAD_SHA"].strip()
               if not head_sha:
                   raise SystemExit("workflow_run.head_sha is missing.")
 
-              subprocess.run(["git", "fetch", "--tags", "--force"], check=True)
               raw_tags = subprocess.check_output(
                   ["git", "tag", "--points-at", head_sha],
                   text=True,
               ).splitlines()
               tags = sorted(
-                  tag.strip() for tag in raw_tags
+                  tag.strip()
+                  for tag in raw_tags
                   if re.fullmatch(r"v\d+\.\d+\.\d+", tag.strip())
               )
               if not tags:
