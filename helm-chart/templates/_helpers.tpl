@@ -70,6 +70,14 @@ app.kubernetes.io/component: {{ .name }}
 {{- end -}}
 {{- end -}}
 
+{{- define "job-aggregator.databaseUrlEnv" -}}
+{{- if and .Values.database.connection.enabled .Values.database.connection.secretName }}
+{{- toYaml (list (dict "name" "DATABASE_URL" "valueFrom" (dict "secretKeyRef" (dict "name" .Values.database.connection.secretName "key" .Values.database.connection.secretKey)))) -}}
+{{- else -}}
+[]
+{{- end -}}
+{{- end -}}
+
 {{- define "job-aggregator.componentDeployment" -}}
 {{- $root := .root -}}
 {{- $component := .component -}}

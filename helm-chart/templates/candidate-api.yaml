@@ -1,5 +1,6 @@
 {{- if .Values.candidateApi.enabled }}
-{{- $defaultEnv := list (dict "name" "QUEUE_BACKEND" "value" .Values.candidateApi.queueBackend) -}}
+{{- $databaseEnv := include "job-aggregator.databaseUrlEnv" . | fromYamlArray -}}
+{{- $defaultEnv := concat $databaseEnv (list (dict "name" "QUEUE_BACKEND" "value" .Values.candidateApi.queueBackend)) -}}
 {{ include "job-aggregator.componentDeployment" (dict "root" . "name" "candidate-api" "component" .Values.candidateApi "defaultEnv" $defaultEnv) }}
 ---
 {{ include "job-aggregator.componentService" (dict "root" . "name" "candidate-api" "component" .Values.candidateApi) }}

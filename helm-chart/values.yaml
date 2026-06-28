@@ -10,6 +10,12 @@ global:
   podAnnotations: {}
   podLabels: {}
 
+database:
+  connection:
+    enabled: false
+    secretName: ""
+    secretKey: "uri"
+
 serviceAccount:
   create: false
   annotations: {}

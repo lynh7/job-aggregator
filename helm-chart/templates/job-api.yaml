@@ -1,5 +1,6 @@
 {{- if .Values.jobApi.enabled }}
-{{ include "job-aggregator.componentDeployment" (dict "root" . "name" "job-api" "component" .Values.jobApi) }}
+{{- $defaultEnv := include "job-aggregator.databaseUrlEnv" . | fromYamlArray -}}
+{{ include "job-aggregator.componentDeployment" (dict "root" . "name" "job-api" "component" .Values.jobApi "defaultEnv" $defaultEnv) }}
 ---
 {{ include "job-aggregator.componentService" (dict "root" . "name" "job-api" "component" .Values.jobApi) }}
 {{- if .Values.jobApi.autoscaling.enabled }}
