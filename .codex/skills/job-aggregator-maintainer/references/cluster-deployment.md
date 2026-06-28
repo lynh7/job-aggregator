@@ -51,9 +51,11 @@ Use `helm-chart/` or the GitOps repo as the deployment source of truth.
   - `ghcr.io/lynh7/job-aggregator-candidate-worker`
   - `ghcr.io/lynh7/job-aggregator-crawler-api`
   - `ghcr.io/lynh7/job-aggregator-crawler-api-browser`
+- GHCR package visibility is separate from GitHub repository visibility. Public repo status does not automatically make these package pulls anonymous.
 - Image tags pushed per selected image: `<semver>`, `<full git sha>`, `<short sha>`, and `latest`.
 - Selective-build mode means some later semver tags may exist only for the images changed in that release.
 - Kubernetes-facing values should pin immutable Git SHA tags, not rely on `latest`.
+- Helm chart publication is triggered by the `Release Helm Chart` workflow via `workflow_run` after the image build workflow succeeds, not by the tag push event directly.
 
 ## Recommended crawler topology
 

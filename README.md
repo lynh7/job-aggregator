@@ -187,7 +187,7 @@ Legacy local build agent:
 `helm-chart/` now packages the recommended application topology in one chart:
 
 - `job-api` enabled by default at 2 replicas
-- `crawler-api` enabled by default with a direct toggle between lightweight and browser images
+- `crawler-api` enabled by default with the `lightweight` image variant
 - `candidate-api` enabled by default at 1 replica
 - `candidate-worker` enabled by default at 1 replica
 - `nats` disabled by default because `QUEUE_BACKEND=database` is still the live path
@@ -199,10 +199,13 @@ Render the default chart and the shipped override examples:
 helm template job-aggregator ./helm-chart
 helm template job-aggregator ./helm-chart -f ./helm-chart/examples/browser-crawler.values.yaml
 helm template job-aggregator ./helm-chart -f ./helm-chart/examples/existing-shared-pvc.values.yaml
+helm template job-aggregator ./helm-chart -f ./helm-chart/examples/existing-secret.values.yaml
 helm template job-aggregator ./helm-chart -f ./helm-chart/examples/nats.values.yaml
 ```
 
-Set `crawlerApi.useBrowserImage=true` to switch the crawler deployment from `ghcr.io/lynh7/job-aggregator-crawler-api` to `ghcr.io/lynh7/job-aggregator-crawler-api-browser`. When that toggle is on, the chart also sets `CRAWL_BACKEND=crawl4ai`.
+Set `crawlerApi.imageVariant=browser` to switch the single `crawler-api` deployment from `ghcr.io/lynh7/job-aggregator-crawler-api` to `ghcr.io/lynh7/job-aggregator-crawler-api-browser`. The default is `lightweight`. When the `browser` variant is selected, the chart also sets `CRAWL_BACKEND=crawl4ai`.
+
+If your cluster injects runtime configuration from an existing Secret, set `global.envFrom` or use `helm-chart/examples/existing-secret.values.yaml`. The chart no longer assumes a `job-aggregator-env` Secret exists by default.
 
 Chart releases are published from `.github/workflows/release-helm-chart.yml` after `build-via-cloud-build` completes successfully and creates a repo tag like `v0.1.0`. The workflow reuses that semver for:
 

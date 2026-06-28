@@ -1,5 +1,5 @@
 crawlerApi:
-  useBrowserImage: true
+  imageVariant: browser
   resources:
     requests:
       cpu: 500m

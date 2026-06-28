@@ -1,11 +1,16 @@
 {{- if .Values.crawlerApi.enabled }}
+{{- $crawlerVariant := .Values.crawlerApi.imageVariant | default "lightweight" -}}
 {{- $crawlerImageRepository := .Values.crawlerApi.image.repository -}}
 {{- if not $crawlerImageRepository -}}
-{{- $crawlerImageRepository = ternary .Values.crawlerApi.imageVariants.browser .Values.crawlerApi.imageVariants.lightweight .Values.crawlerApi.useBrowserImage -}}
+{{- $crawlerImageRepository = get .Values.crawlerApi.imageVariants $crawlerVariant -}}
+{{- end -}}
+{{- $crawlerBackend := .Values.crawlerApi.backend -}}
+{{- if eq $crawlerVariant "browser" -}}
+{{- $crawlerBackend = "crawl4ai" -}}
 {{- end -}}
 {{- $crawlerComponent := merge (dict "image" (merge (dict "repository" $crawlerImageRepository) .Values.crawlerApi.image)) .Values.crawlerApi -}}
 {{- $defaultEnv := list
-  (dict "name" "CRAWL_BACKEND" "value" (ternary "crawl4ai" .Values.crawlerApi.backend .Values.crawlerApi.useBrowserImage))
+  (dict "name" "CRAWL_BACKEND" "value" $crawlerBackend)
   (dict "name" "CORE_API_BASE_URL" "value" (printf "http://%s:%v" (include "job-aggregator.componentFullname" (dict "root" . "name" "job-api")) .Values.jobApi.service.port))
   (dict "name" "CORE_API_INGEST_PATH" "value" .Values.crawlerApi.coreApi.ingestPath)
   (dict "name" "CRAWLER_ENABLED_PROVIDERS" "value" .Values.crawlerApi.enabledProviders)

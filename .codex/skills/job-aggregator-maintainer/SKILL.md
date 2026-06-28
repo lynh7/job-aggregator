@@ -37,6 +37,7 @@ deployment packaging, or operational behavior.
   - `ghcr.io/lynh7/job-aggregator-candidate-worker`
   - `ghcr.io/lynh7/job-aggregator-crawler-api`
   - `ghcr.io/lynh7/job-aggregator-crawler-api-browser`
+- GHCR package visibility is managed separately from repo visibility. A public GitHub repo can still publish private GHCR packages unless each package is explicitly made public or pulled with auth.
 - Version source of truth is repo git tags starting at `v0.1.0`. CI only bumps the patch digit and applies the same new version to every image built in that workflow run.
 - Selective builds share one repo version, so unchanged images may not exist for every later patch tag.
 - Use immutable Git SHA image tags in Kubernetes-facing examples and environment values; `latest` is convenience only.
@@ -74,6 +75,7 @@ make build-crawler-api-browser
 
 ```bash
 sed -n '1,260p' .github/workflows/build-via-cloud-build.yml
+sed -n '1,260p' .github/workflows/release-helm-chart.yml
 sed -n '1,220p' cloudbuild.remote.yaml
 find deploy/terraform/gcp-cloud-build-runner -maxdepth 2 -type f
 ```
@@ -120,6 +122,7 @@ helm template job-aggregator ./helm-chart -f ./helm-chart/examples/nats.values.y
   - `docker/candidate-api.Dockerfile`
   - `docker/candidate-worker.Dockerfile`
 - Keep service-specific image names, immutable tags, and ports aligned across Cloud Build and Helm values.
+- Keep Helm release automation aligned with the image build workflow. The chart release now runs from `workflow_run` after `build-via-cloud-build` succeeds and discovers the new semver tag from that run's head SHA.
 - Treat `/app/data` storage, PostgreSQL wiring, and ingest token wiring as deployment contract.
 
 ## Validation expectations
