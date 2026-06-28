@@ -2,8 +2,18 @@ apiVersion: v1
 entries:
   job-aggregator:
   - apiVersion: v2
+    appVersion: 0.1.4
+    created: "2026-06-28T17:04:08.299124064Z"
+    description: Helm chart for the recommended job-aggregator application topology
+    digest: 125ca3ae6ee30828f6c87eb602650b8a9b3eaa5c3bf447b736bf589216d216a1
+    name: job-aggregator
+    type: application
+    urls:
+    - https://lynh7.github.io/job-aggregator/job-aggregator-0.1.4.tgz
+    version: 0.1.4
+  - apiVersion: v2
     appVersion: 0.1.3
-    created: "2026-06-28T11:56:40.534460761Z"
+    created: "2026-06-28T17:04:08.284647367Z"
     description: Helm chart for the recommended job-aggregator application topology
     digest: 43da84657990d413023accc039f5222d583a689ee1a388f04c22c7ab1924d04a
     name: job-aggregator
@@ -13,7 +23,7 @@ entries:
     version: 0.1.3
   - apiVersion: v2
     appVersion: 0.1.0
-    created: "2026-06-28T11:56:40.530343247Z"
+    created: "2026-06-28T17:04:08.280896421Z"
     description: Helm chart for the recommended job-aggregator application topology
     digest: 55b63a18d0cf24abd4b46f7cafb474bb64e19ced6fcd4d90ab5857f766dcce68
     name: job-aggregator
@@ -21,4 +31,4 @@ entries:
     urls:
     - https://lynh7.github.io/job-aggregator/job-aggregator-0.1.0.tgz
     version: 0.1.0
-generated: "2026-06-28T11:56:40.525522697Z"
+generated: "2026-06-28T17:04:08.269669175Z"
