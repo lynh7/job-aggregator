@@ -109,7 +109,9 @@ jobs:
                   selected = set(images)
               else:
                   for path in changed:
-                      if path.startswith('app/') or path == 'docker/job-api.Dockerfile':
+                      if path.startswith('app/'):
+                          selected.update(images)
+                      if path == 'docker/job-api.Dockerfile':
                           selected.add('job-api')
                       if path.startswith('candidate_service/') or path in {
                           'docker/candidate-api.Dockerfile',
