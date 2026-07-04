@@ -14,6 +14,23 @@ on:
       - 'cloudbuild.remote.yaml'
       - '.github/workflows/build-via-cloud-build.yml'
   workflow_dispatch:
+    inputs:
+      run_mode:
+        description: 'Choose release to build/publish or test to validate the flow without publishing'
+        required: true
+        default: release
+        type: choice
+        options:
+          - release
+          - test
+      build_scope:
+        description: 'Choose auto to respect changed paths or all to force every image through the flow'
+        required: true
+        default: all
+        type: choice
+        options:
+          - all
+          - auto
 
 permissions:
   contents: write
@@ -43,6 +60,8 @@ jobs:
         id: detect
         env:
           EVENT_NAME: ${{ github.event_name }}
+          RUN_MODE: ${{ github.event.inputs.run_mode }}
+          BUILD_SCOPE: ${{ github.event.inputs.build_scope }}
           BEFORE_SHA: ${{ github.event.before }}
           CURRENT_SHA: ${{ github.sha }}
         run: |
@@ -76,6 +95,8 @@ jobs:
           }
 
           event_name = os.environ['EVENT_NAME']
+          run_mode = os.environ.get('RUN_MODE', '').strip() or 'release'
+          build_scope = os.environ.get('BUILD_SCOPE', '').strip() or 'all'
           before_sha = os.environ.get('BEFORE_SHA', '').strip()
           current_sha = os.environ['CURRENT_SHA']
 
@@ -84,8 +105,52 @@ jobs:
               print(reason)
               return names
 
-          if event_name == 'workflow_dispatch':
-              selected = all_components('Manual dispatch: build every image.')
+          if event_name == 'workflow_dispatch' and build_scope == 'all':
+              selected = all_components(
+                  f"Manual dispatch ({run_mode}): force every image through the flow."
+              )
+          elif event_name == 'workflow_dispatch' and build_scope == 'auto':
+              print(f"Manual dispatch ({run_mode}): using changed-path detection.")
+              diff = subprocess.check_output(
+                  ['git', 'diff', '--name-only', 'HEAD^..HEAD'],
+                  text=True,
+              )
+              changed = [line.strip() for line in diff.splitlines() if line.strip()]
+              print('Changed files:')
+              for path in changed:
+                  print(f'  - {path}')
+
+              selected = set()
+              shared_all_files = {
+                  '.dockerignore',
+                  'cloudbuild.remote.yaml',
+                  'pyproject.toml',
+                  '.github/workflows/build-via-cloud-build.yml',
+              }
+              if any(path in shared_all_files for path in changed):
+                  selected = set(images)
+              else:
+                  for path in changed:
+                      if path.startswith('app/'):
+                          selected.update(images)
+                      if path == 'docker/job-api.Dockerfile':
+                          selected.add('job-api')
+                      if path.startswith('candidate_service/') or path in {
+                          'docker/candidate-api.Dockerfile',
+                          'docker/candidate-worker.Dockerfile',
+                      }:
+                          selected.update({'candidate-api', 'candidate-worker'})
+                      if path.startswith('crawler_service/') or path in {
+                          'docker/crawler-api.Dockerfile',
+                          'docker/crawler-api-browser.Dockerfile',
+                      }:
+                          selected.update({'crawler-api', 'crawler-api-browser'})
+
+              selected = sorted(selected)
+              if selected:
+                  print('Selected images: ' + ', '.join(selected))
+              else:
+                  print('No image-producing paths changed.')
           elif not before_sha or set(before_sha) == {'0'}:
               selected = all_components('No usable previous SHA: build every image.')
           else:
@@ -192,7 +257,7 @@ jobs:
     needs:
       - detect-images
       - resolve-versions
-    if: ${{ needs.detect-images.outputs.count != '0' }}
+    if: ${{ needs.detect-images.outputs.count != '0' && (github.event_name != 'workflow_dispatch' || github.event.inputs.run_mode != 'test') }}
     runs-on:
       - self-hosted
     timeout-minutes: 60
@@ -328,7 +393,7 @@ jobs:
       - detect-images
       - resolve-versions
       - cloud-build
-    if: ${{ needs.detect-images.outputs.count != '0' && needs.cloud-build.result == 'success' }}
+    if: ${{ needs.detect-images.outputs.count != '0' && needs.cloud-build.result == 'success' && (github.event_name != 'workflow_dispatch' || github.event.inputs.run_mode != 'test') }}
     runs-on:
       - self-hosted
     steps:
@@ -357,6 +422,52 @@ jobs:
           git add helm-chart/Chart.yaml helm-chart/values.yaml
           git commit -m "Update chart defaults for release v${CHART_VERSION}"
           git push origin "HEAD:${TARGET_BRANCH}"
+
+  test-release-flow:
+    needs:
+      - detect-images
+      - resolve-versions
+    if: ${{ needs.detect-images.outputs.count != '0' && github.event_name == 'workflow_dispatch' && github.event.inputs.run_mode == 'test' }}
+    runs-on:
+      - self-hosted
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Helm
+        uses: azure/setup-helm@v4
+
+      - name: Simulate chart update
+        env:
+          BUILD_MATRIX: ${{ needs.resolve-versions.outputs.matrix }}
+          CHART_VERSION: ${{ needs.resolve-versions.outputs.chart_version }}
+        run: |
+          cp -R helm-chart /tmp/job-aggregator-test-chart
+          python3 .github/scripts/chart_versioning.py apply-release-state \
+            --matrix-json "${BUILD_MATRIX}" \
+            --chart-version "${CHART_VERSION}" \
+            --values-file /tmp/job-aggregator-test-chart/values.yaml \
+            --chart-file /tmp/job-aggregator-test-chart/Chart.yaml
+
+      - name: Validate simulated default chart render
+        run: helm template job-aggregator /tmp/job-aggregator-test-chart
+
+      - name: Validate simulated browser crawler render
+        run: helm template job-aggregator /tmp/job-aggregator-test-chart -f /tmp/job-aggregator-test-chart/examples/browser-crawler.values.yaml
+
+      - name: Validate simulated shared PVC override render
+        run: helm template job-aggregator /tmp/job-aggregator-test-chart -f /tmp/job-aggregator-test-chart/examples/existing-shared-pvc.values.yaml
+
+      - name: Validate simulated NATS render
+        run: helm template job-aggregator /tmp/job-aggregator-test-chart -f /tmp/job-aggregator-test-chart/examples/nats.values.yaml
+
+      - name: Package simulated chart
+        env:
+          CHART_VERSION: ${{ needs.resolve-versions.outputs.chart_version }}
+        run: |
+          mkdir -p /tmp/job-aggregator-test-packages
+          helm package /tmp/job-aggregator-test-chart --destination /tmp/job-aggregator-test-packages
+          test -f "/tmp/job-aggregator-test-packages/job-aggregator-${CHART_VERSION}.tgz"
 
   no-op:
     needs:
