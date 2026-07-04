@@ -14,7 +14,7 @@
   (dict "name" "CORE_API_BASE_URL" "value" (printf "http://%s:%v" (include "job-aggregator.componentFullname" (dict "root" . "name" "job-api")) .Values.jobApi.service.port))
   (dict "name" "CORE_API_INGEST_PATH" "value" .Values.crawlerApi.coreApi.ingestPath)
   (dict "name" "CRAWLER_ENABLED_PROVIDERS" "value" .Values.crawlerApi.enabledProviders)
--}}
+}}
 {{ include "job-aggregator.componentDeployment" (dict "root" . "name" "crawler-api" "component" $crawlerComponent "defaultEnv" $defaultEnv) }}
 ---
 {{ include "job-aggregator.componentService" (dict "root" . "name" "crawler-api" "component" $crawlerComponent) }}
