@@ -68,6 +68,7 @@ def test_ingest_stores_raw_and_master_jobs() -> None:
     body = response.json()
     assert body["fetched"] == 1
     assert body["stored"] == 1
+    assert body["duplicates_filtered"] == 0
     assert body["providers"] == ["topcv"]
     assert body["json_export"] is None
     assert body["xlsx_export"] is None
@@ -81,3 +82,39 @@ def test_ingest_stores_raw_and_master_jobs() -> None:
     assert jobs[0].title == "Data Engineer"
     assert jobs[0].company == "Example Co"
     assert jobs[0].provider == "topcv"
+
+
+def test_ingest_filters_duplicate_records() -> None:
+    payload = {
+        "provider": "topcv",
+        "api_version": "v1",
+        "source_record_id": "job-dup",
+        "payload": {
+            "job_id": "job-dup",
+            "job_title": "Data Engineer",
+            "company_name": "Example Co",
+            "city": "Ho Chi Minh City",
+            "job_description": "Build pipelines",
+            "job_type": "full-time",
+            "salary_range": "$1000-$2000",
+            "apply_url": "https://example.com/job-dup",
+        },
+    }
+    response = client.post(
+        "/api/v1/ingest/raw-jobs",
+        headers={"X-Ingest-Token": "test-ingest-token"},
+        json={"records": [payload, payload], "export": False},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["fetched"] == 2
+    assert body["stored"] == 1
+    assert body["duplicates_filtered"] == 1
+
+    with SessionLocal() as session:
+        raw_jobs = list(session.scalars(select(RawJob)))
+        jobs = list(session.scalars(select(Job)))
+
+    assert len(raw_jobs) == 1
+    assert len(jobs) == 1

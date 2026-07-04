@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.config import Settings, get_settings
 from app.database import get_db
+from app.logging import get_logger
 from app.models import Candidate, CandidateProfile, CandidateTask, JobApplication, JobMatch
 from candidate_service.schemas import (
     CandidateApplicationResponse,
@@ -11,6 +12,8 @@ from candidate_service.schemas import (
     CandidateApplyResponse,
     CandidateCreateResponse,
     CandidateDetailResponse,
+    CandidateJobSearchRequest,
+    CandidateJobSearchResponse,
     CandidateMatchResponse,
     CandidateProfileResponse,
     CandidateRematchRequest,
@@ -18,9 +21,16 @@ from candidate_service.schemas import (
     CandidateSubmissionMetadata,
     CandidateTaskResponse,
 )
-from candidate_service.service import create_candidate_submission, enqueue_job_applications, enqueue_rematch
+from candidate_service.service import (
+    create_candidate_submission,
+    enqueue_job_applications,
+    enqueue_rematch,
+    list_candidate_job_searches,
+    upsert_candidate_job_search,
+)
 
 router = APIRouter()
+logger = get_logger(__name__)
 
 
 @router.get("/health")
@@ -35,6 +45,7 @@ def submit_candidate(
     email: str | None = Form(default=None),
     phone: str | None = Form(default=None),
     location: str | None = Form(default=None),
+    job_keywords: str | None = Form(default=None),
     session: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> CandidateCreateResponse:
@@ -46,13 +57,26 @@ def submit_candidate(
     ).model_dump()
     try:
         candidate, document, task_id = create_candidate_submission(session, settings, file, metadata)
+        job_search_id: int | None = None
+        if job_keywords:
+            keywords = [item.strip() for item in job_keywords.split(",") if item.strip()]
+            search = upsert_candidate_job_search(
+                session,
+                settings,
+                candidate_id=candidate.id,
+                keywords=keywords,
+                location=location,
+            )
+            job_search_id = search.id
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    logger.info("candidate.submit.accepted", candidate_id=candidate.id, task_id=task_id)
     return CandidateCreateResponse(
         candidate_id=candidate.id,
         document_id=document.id,
         task_id=task_id,
         status=candidate.status,
+        job_search_id=job_search_id,
     )
 
 
@@ -84,6 +108,10 @@ def get_candidate(candidate_id: int, session: Session = Depends(get_db)) -> Cand
         candidate=CandidateResponse.model_validate(candidate),
         latest_profile=CandidateProfileResponse.model_validate(profile) if profile else None,
         tasks=[CandidateTaskResponse.model_validate(task) for task in tasks],
+        job_searches=[
+            CandidateJobSearchResponse.model_validate(search)
+            for search in list_candidate_job_searches(session, candidate_id)
+        ],
     )
 
 
@@ -145,3 +173,28 @@ def list_tasks(limit: int = 100, session: Session = Depends(get_db)) -> list[Can
     return list(
         session.scalars(select(CandidateTask).order_by(CandidateTask.created_at.desc()).limit(min(limit, 500)))
     )
+
+
+@router.post("/candidates/{candidate_id}/job-searches", response_model=CandidateJobSearchResponse, status_code=202)
+def create_or_update_job_search(
+    candidate_id: int,
+    request: CandidateJobSearchRequest,
+    session: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> CandidateJobSearchResponse:
+    candidate = session.get(Candidate, candidate_id)
+    if candidate is None:
+        raise HTTPException(status_code=404, detail="Candidate not found")
+    try:
+        search = upsert_candidate_job_search(
+            session,
+            settings,
+            candidate_id=candidate_id,
+            keywords=request.keywords,
+            location=request.location or candidate.location,
+            is_active=request.is_active,
+            crawl_interval_hours=request.crawl_interval_hours,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return CandidateJobSearchResponse.model_validate(search)

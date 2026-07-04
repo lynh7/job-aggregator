@@ -74,7 +74,7 @@ app.kubernetes.io/component: {{ .name }}
 {{- if and .Values.database.connection.enabled .Values.database.connection.secretName }}
 {{- toYaml (list (dict "name" "DATABASE_URL" "valueFrom" (dict "secretKeyRef" (dict "name" .Values.database.connection.secretName "key" .Values.database.connection.secretKey)))) -}}
 {{- else -}}
-[]
+{{- toYaml (list (dict "name" "DATABASE_URL" "value" (printf "sqlite:///%s/jobs.db" .Values.sharedData.mountPath))) -}}
 {{- end -}}
 {{- end -}}
 

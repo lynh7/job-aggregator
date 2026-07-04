@@ -9,6 +9,7 @@ from app.business_rules.registry import build_business_rules_registry
 from app.config import Settings, get_settings
 from app.connectors.registry import build_providers
 from app.database import get_db
+from app.logging import get_logger
 from app.models import Job, RawJob
 from app.schemas import (
     IngestRawJobsRequest,
@@ -18,9 +19,10 @@ from app.schemas import (
     SearchRequest,
     SearchResponse,
 )
-from app.services.collector import apply_business_rules, collect_jobs, persist_results
+from app.services.collector import apply_business_rules, collect_jobs, dedupe_raw_job_records, persist_results
 
 router = APIRouter()
+logger = get_logger(__name__)
 
 
 @router.get("/health")
@@ -65,6 +67,14 @@ async def search_jobs(
     )
     results = apply_business_rules(build_business_rules_registry(), fetched)
     stored_master, json_path, xlsx_path = persist_results(session, settings, results, export=True)
+    logger.info(
+        "api.search.completed",
+        providers=requested,
+        keywords=request.keywords,
+        location=request.location,
+        fetched=len(fetched),
+        stored=len(stored_master),
+    )
     return SearchResponse(
         fetched=len(fetched),
         stored=len(stored_master),
@@ -82,17 +92,28 @@ def ingest_raw_jobs(
     ingest_token: str | None = Header(default=None, alias="X-Ingest-Token"),
 ) -> IngestResponse:
     _authorize_ingest(settings, ingest_token)
-    results = apply_business_rules(build_business_rules_registry(), request.records)
+    deduped_records = dedupe_raw_job_records(request.records)
+    results = apply_business_rules(build_business_rules_registry(), deduped_records)
     stored_master, json_path, xlsx_path = persist_results(
         session,
         settings,
         results,
         export=request.export,
     )
-    providers = sorted({record.provider for record in request.records})
+    providers = sorted({record.provider for record in deduped_records})
+    duplicates_filtered = len(request.records) - len(deduped_records)
+    logger.info(
+        "api.ingest.completed",
+        providers=providers,
+        fetched=len(request.records),
+        unique_records=len(deduped_records),
+        stored=len(stored_master),
+        duplicates_filtered=duplicates_filtered,
+    )
     return IngestResponse(
         fetched=len(request.records),
         stored=len(stored_master),
+        duplicates_filtered=duplicates_filtered,
         providers=providers,
         json_export=str(json_path) if json_path is not None else None,
         xlsx_export=str(xlsx_path) if xlsx_path is not None else None,

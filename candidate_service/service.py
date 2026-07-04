@@ -1,6 +1,7 @@
 import asyncio
 import shutil
 import uuid
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from fastapi import UploadFile
@@ -11,12 +12,23 @@ from sqlalchemy.orm import Session
 from app.config import Settings
 from app.connectors.base import ProviderApplicationRequest
 from app.connectors.registry import build_providers
-from app.models import Candidate, CandidateDocument, CandidateProfile, Job, JobApplication, JobMatch
+from app.logging import get_logger
+from app.models import (
+    Candidate,
+    CandidateDocument,
+    CandidateJobSearch,
+    CandidateProfile,
+    Job,
+    JobApplication,
+    JobMatch,
+)
+from candidate_service.crawler_client import trigger_candidate_crawl
 from candidate_service.job_projection import project_master_job
 from candidate_service.matching import MATCH_RULE_VERSION, score_candidate_job
 from candidate_service.parsing import PARSER_VERSION, extract_document_text, parse_candidate_profile
 from candidate_service.task_queue import enqueue_candidate_task
 
+logger = get_logger(__name__)
 
 SUPPORTED_CONTENT_TYPES = {
     "application/pdf",
@@ -70,10 +82,19 @@ def create_candidate_submission(
         candidate_id=candidate.id,
         payload={"document_id": document.id},
     )
+    logger.info(
+        "candidate.submission.created",
+        candidate_id=candidate.id,
+        document_id=document.id,
+        task_id=task.id,
+        filename=document.filename,
+        content_type=document.content_type,
+    )
     return candidate, document, task.id
 
 
 def process_candidate_submission(session: Session, settings: Settings, candidate_id: int, document_id: int) -> None:
+    logger.info("candidate.submission.process.start", candidate_id=candidate_id, document_id=document_id)
     candidate = session.get(Candidate, candidate_id)
     document = session.get(CandidateDocument, document_id)
     if candidate is None or document is None:
@@ -106,6 +127,12 @@ def process_candidate_submission(session: Session, settings: Settings, candidate
     rematch_candidate(session, settings, candidate.id)
     candidate.status = "matched"
     session.commit()
+    logger.info(
+        "candidate.submission.process.completed",
+        candidate_id=candidate.id,
+        document_id=document.id,
+        profile_version=PROFILE_VERSION,
+    )
 
 
 def rematch_candidate(session: Session, settings: Settings, candidate_id: int, limit: int | None = None) -> int:
@@ -168,7 +195,16 @@ def rematch_candidate(session: Session, settings: Settings, candidate_id: int, l
         else:
             session.add(JobMatch(**values))
     session.commit()
-    return min(len(scored), max_results)
+
+    matched_count = min(len(scored), max_results)
+    logger.info(
+        "candidate.rematch.completed",
+        candidate_id=candidate_id,
+        matched_count=matched_count,
+        requested_limit=max_results,
+        total_scored=len(scored),
+    )
+    return matched_count
 
 
 def enqueue_rematch(session: Session, candidate_id: int, limit: int | None = None) -> int:
@@ -178,6 +214,7 @@ def enqueue_rematch(session: Session, candidate_id: int, limit: int | None = Non
         candidate_id=candidate_id,
         payload={"limit": limit},
     )
+    logger.info("candidate.rematch.queued", candidate_id=candidate_id, task_id=task.id, limit=limit)
     return task.id
 
 
@@ -218,6 +255,12 @@ def enqueue_job_applications(session: Session, candidate_id: int, match_ids: lis
             payload={"application_id": application.id},
         )
         task_ids.append(task.id)
+    logger.info(
+        "candidate.applications.queued",
+        candidate_id=candidate_id,
+        application_count=len(task_ids),
+        task_ids=task_ids,
+    )
     return task_ids
 
 
@@ -246,7 +289,6 @@ def process_job_application(session: Session, settings: Settings, application_id
         raise ValueError(f"Provider {application.provider} is not configured")
 
     cv_path = Path(document.storage_path)
-    cv_bytes = cv_path.read_bytes()
     request = ProviderApplicationRequest(
         candidate_id=candidate.id,
         full_name=candidate.full_name,
@@ -256,7 +298,7 @@ def process_job_application(session: Session, settings: Settings, application_id
         cv_text=document.extracted_text,
         cv_filename=document.filename,
         cv_content_type=document.content_type,
-        cv_bytes=cv_bytes,
+        cv_bytes=cv_path.read_bytes(),
         job_source_record_id=match.job_source_record_id,
         job_url=match.job_url,
     )
@@ -282,6 +324,137 @@ def process_job_application(session: Session, settings: Settings, application_id
     application.response_payload = result.response_payload
     application.mark_submitted()
     session.commit()
+    logger.info(
+        "candidate.application.processed",
+        application_id=application.id,
+        candidate_id=candidate.id,
+        provider=application.provider,
+        status=application.status,
+    )
+
+
+def upsert_candidate_job_search(
+    session: Session,
+    settings: Settings,
+    *,
+    candidate_id: int,
+    keywords: list[str],
+    location: str | None,
+    is_active: bool = True,
+    crawl_interval_hours: int | None = None,
+) -> CandidateJobSearch:
+    normalized_keywords = _normalize_keywords(keywords)
+    if not normalized_keywords:
+        raise ValueError("At least one valid keyword is required")
+
+    normalized_location = _normalize_location(location)
+    signature = _keyword_signature(normalized_keywords)
+    search = session.scalar(
+        select(CandidateJobSearch).where(
+            CandidateJobSearch.candidate_id == candidate_id,
+            CandidateJobSearch.keyword_signature == signature,
+            CandidateJobSearch.location == normalized_location,
+        )
+    )
+    interval = crawl_interval_hours or settings.candidate_crawl_interval_hours
+    next_crawl_at = datetime.now(UTC)
+    if search is None:
+        search = CandidateJobSearch(
+            candidate_id=candidate_id,
+            keywords=normalized_keywords,
+            keyword_signature=signature,
+            location=normalized_location,
+            is_active=is_active,
+            crawl_interval_hours=interval,
+            next_crawl_at=next_crawl_at,
+        )
+        session.add(search)
+    else:
+        search.keywords = normalized_keywords
+        search.keyword_signature = signature
+        search.location = normalized_location
+        search.is_active = is_active
+        search.crawl_interval_hours = interval
+        if is_active:
+            search.next_crawl_at = next_crawl_at
+    session.commit()
+    session.refresh(search)
+    logger.info(
+        "candidate.job_search.upserted",
+        candidate_id=candidate_id,
+        search_id=search.id,
+        keywords=search.keywords,
+        location=search.location,
+        is_active=search.is_active,
+        crawl_interval_hours=search.crawl_interval_hours,
+    )
+    return search
+
+
+def list_candidate_job_searches(session: Session, candidate_id: int) -> list[CandidateJobSearch]:
+    return list(
+        session.scalars(
+            select(CandidateJobSearch)
+            .where(CandidateJobSearch.candidate_id == candidate_id)
+            .order_by(CandidateJobSearch.created_at.desc())
+        )
+    )
+
+
+def enqueue_due_job_search_tasks(session: Session, settings: Settings) -> int:
+    now = datetime.now(UTC)
+    due_searches = list(
+        session.scalars(
+            select(CandidateJobSearch)
+            .where(
+                CandidateJobSearch.is_active.is_(True),
+                CandidateJobSearch.next_crawl_at <= now,
+            )
+            .order_by(CandidateJobSearch.next_crawl_at.asc())
+        )
+    )
+    enqueued = 0
+    for search in due_searches:
+        search.next_crawl_at = now + timedelta(hours=search.crawl_interval_hours)
+        enqueue_candidate_task(
+            session,
+            task_type="crawl_jobs_for_candidate",
+            candidate_id=search.candidate_id,
+            payload={"search_id": search.id},
+        )
+        enqueued += 1
+    if enqueued:
+        session.commit()
+        logger.info("candidate.job_search.tasks_enqueued", count=enqueued)
+    return enqueued
+
+
+def process_candidate_job_search(session: Session, settings: Settings, search_id: int) -> None:
+    search = session.get(CandidateJobSearch, search_id)
+    if search is None:
+        raise ValueError("Candidate job search not found")
+    if not search.is_active:
+        logger.info("candidate.job_search.skipped_inactive", search_id=search_id, candidate_id=search.candidate_id)
+        return
+
+    response = trigger_candidate_crawl(
+        settings,
+        candidate_id=search.candidate_id,
+        keywords=search.keywords,
+        location=search.location,
+        limit_per_provider=settings.candidate_crawl_limit_per_provider,
+    )
+    search.last_crawled_at = datetime.now(UTC)
+    session.commit()
+    enqueue_rematch(session, search.candidate_id, None)
+    logger.info(
+        "candidate.job_search.processed",
+        search_id=search.id,
+        candidate_id=search.candidate_id,
+        fetched=response.fetched,
+        stored=response.stored,
+        duplicates_filtered=response.duplicates_filtered,
+    )
 
 
 def _validate_upload(upload: UploadFile) -> None:
@@ -302,3 +475,26 @@ def _derive_location(parsed: dict, text: str) -> str | None:
             if value:
                 return value
     return None
+
+
+def _normalize_keywords(keywords: list[str]) -> list[str]:
+    seen: set[str] = set()
+    normalized: list[str] = []
+    for keyword in keywords:
+        cleaned = " ".join(keyword.strip().lower().split())
+        if not cleaned or cleaned in seen:
+            continue
+        seen.add(cleaned)
+        normalized.append(cleaned)
+    return normalized
+
+
+def _keyword_signature(keywords: list[str]) -> str:
+    return "|".join(sorted(keywords))
+
+
+def _normalize_location(location: str | None) -> str | None:
+    if location is None:
+        return None
+    cleaned = " ".join(location.strip().split())
+    return cleaned or None

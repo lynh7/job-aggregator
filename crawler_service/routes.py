@@ -1,10 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException
 
+from app.logging import get_logger
 from crawler_service.config import CrawlerSettings, get_settings
 from crawler_service.schemas import CrawlRequest, CrawlResponse
 from crawler_service.service import crawl_jobs, push_to_core
 
 router = APIRouter()
+logger = get_logger(__name__)
 
 
 @router.get("/health")
@@ -19,5 +21,13 @@ async def crawl(request: CrawlRequest, settings: CrawlerSettings = Depends(get_s
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     if not records:
-        return CrawlResponse(fetched=0, stored=0, providers=requested, json_export=None, xlsx_export=None)
+        logger.info("crawler.request.empty", providers=requested, keywords=request.keywords, location=request.location)
+        return CrawlResponse(
+            fetched=0,
+            stored=0,
+            duplicates_filtered=0,
+            providers=requested,
+            json_export=None,
+            xlsx_export=None,
+        )
     return await push_to_core(requested, records, request, settings)

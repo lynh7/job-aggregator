@@ -69,6 +69,7 @@ class IngestRawJobsRequest(BaseModel):
 class IngestResponse(BaseModel):
     fetched: int
     stored: int
+    duplicates_filtered: int = 0
     providers: list[str]
     json_export: str | None = None
     xlsx_export: str | None = None

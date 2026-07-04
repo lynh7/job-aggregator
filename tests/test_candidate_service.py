@@ -1,3 +1,4 @@
+from datetime import UTC, datetime, timedelta
 from io import BytesIO
 from pathlib import Path
 
@@ -6,12 +7,15 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.config import Settings
 from app.database import Base
-from app.models import Candidate, CandidateTask, Job, JobApplication, JobMatch
+from app.models import Candidate, CandidateJobSearch, CandidateTask, Job, JobApplication, JobMatch
 from candidate_service.service import (
     create_candidate_submission,
+    enqueue_due_job_search_tasks,
     enqueue_job_applications,
     process_candidate_submission,
+    process_candidate_job_search,
     process_job_application,
+    upsert_candidate_job_search,
 )
 from candidate_service.task_queue import claim_candidate_task, enqueue_candidate_task
 
@@ -131,3 +135,65 @@ def test_candidate_tasks_can_be_claimed_by_parallel_workers(tmp_path):
 
     claimed = list(session.scalars(select(CandidateTask).order_by(CandidateTask.id.asc())))
     assert [task.status for task in claimed] == ["processing", "processing"]
+
+
+def test_candidate_job_search_schedules_crawl_task_and_rematch(tmp_path, monkeypatch):
+    session, settings = build_session(tmp_path)
+    candidate = Candidate(status="matched", consent_given=True, location="Remote")
+    session.add(candidate)
+    session.add(
+        Job(
+            provider="mock",
+            api_version="v1",
+            source_record_id="job-1",
+            external_id="job-1",
+            title="Python Backend Engineer",
+            company="Example Co",
+            location="Remote",
+            description="Need python docker kubernetes and sql with 3 years experience",
+            employment_type="Full-time",
+            salary_text=None,
+            url="https://example.com/jobs/job-1",
+            rule_version="master-v1",
+            normalization_status="normalized",
+        )
+    )
+    session.commit()
+    session.refresh(candidate)
+
+    search = upsert_candidate_job_search(
+        session,
+        settings,
+        candidate_id=candidate.id,
+        keywords=["Python", "python", "Backend"],
+        location="Remote",
+    )
+    search.next_crawl_at = datetime.now(UTC) - timedelta(minutes=1)
+    session.commit()
+
+    enqueued = enqueue_due_job_search_tasks(session, settings)
+    assert enqueued == 1
+
+    crawl_task = session.scalar(select(CandidateTask).where(CandidateTask.task_type == "crawl_jobs_for_candidate"))
+    assert crawl_task is not None
+    assert crawl_task.payload["search_id"] == search.id
+
+    class FakeResponse:
+        fetched = 3
+        stored = 2
+        duplicates_filtered = 1
+
+    monkeypatch.setattr(
+        "candidate_service.service.trigger_candidate_crawl",
+        lambda *args, **kwargs: FakeResponse(),
+    )
+
+    process_candidate_job_search(session, settings, search.id)
+
+    refreshed_search = session.get(CandidateJobSearch, search.id)
+    assert refreshed_search is not None
+    assert refreshed_search.last_crawled_at is not None
+
+    rematch_task = session.scalar(select(CandidateTask).where(CandidateTask.task_type == "rematch"))
+    assert rematch_task is not None
+    assert rematch_task.candidate_id == candidate.id

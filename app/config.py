@@ -8,6 +8,8 @@ class Settings(BaseSettings):
     app_env: str = "development"
     database_url: str = "sqlite:///./data/jobs.db"
     export_dir: Path = Path("./data/exports")
+    log_level: str = "INFO"
+    log_json: bool = False
     ingest_api_token: str | None = None
     enabled_providers: str = "mock"
     provider_api_key: str | None = None
@@ -31,6 +33,11 @@ class Settings(BaseSettings):
     nats_url: str = "nats://nats:4222"
     core_api_base_url: str = "http://job-api:8000"
     core_api_ingest_path: str = "/api/v1/ingest/raw-jobs"
+    crawler_api_base_url: str = "http://crawler-api:8200"
+    crawler_api_crawl_path: str = "/api/v1/crawl"
+    candidate_crawl_scheduler_enabled: bool = True
+    candidate_crawl_interval_hours: int = 6
+    candidate_crawl_limit_per_provider: int = 25
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 

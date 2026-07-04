@@ -106,6 +106,27 @@ class CandidateProfile(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class CandidateJobSearch(Base):
+    __tablename__ = "candidate_job_searches"
+    __table_args__ = (
+        UniqueConstraint("candidate_id", "keyword_signature", "location", name="uq_candidate_search_signature"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    candidate_id: Mapped[int] = mapped_column(ForeignKey("candidates.id"), index=True)
+    keywords: Mapped[list[str]] = mapped_column(JSON, default=list)
+    keyword_signature: Mapped[str] = mapped_column(String(500))
+    location: Mapped[str | None] = mapped_column(String(255))
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    crawl_interval_hours: Mapped[int] = mapped_column(Integer, default=6)
+    last_crawled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    next_crawl_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
 class CandidateTask(Base):
     __tablename__ = "candidate_tasks"
 

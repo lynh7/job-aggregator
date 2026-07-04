@@ -133,11 +133,30 @@ It runs as a separate API pod and a separate worker deployment.
 Endpoints:
 
 - `POST http://localhost:8100/api/v1/candidates` with multipart file upload
+- `POST http://localhost:8100/api/v1/candidates/{id}/job-searches`
 - `GET http://localhost:8100/api/v1/candidates`
 - `GET http://localhost:8100/api/v1/candidates/{id}`
 - `GET http://localhost:8100/api/v1/candidates/{id}/matches`
 - `POST http://localhost:8100/api/v1/candidates/{id}/rematch`
 - `GET http://localhost:8100/api/v1/tasks`
+
+Candidate job-search automation:
+
+- Candidates can store a keyword list for recurring crawl automation.
+- The worker scheduler is enabled by default with `CANDIDATE_CRAWL_SCHEDULER_ENABLED=true`.
+- The worker enqueues a crawl task every `CANDIDATE_CRAWL_INTERVAL_HOURS` and defaults to 6 hours.
+- Set `CANDIDATE_CRAWL_SCHEDULER_ENABLED=false` to turn the recurring scheduler off entirely.
+- Change `CANDIDATE_CRAWL_INTERVAL_HOURS` to retime the default schedule without code changes.
+- Successful crawl tasks trigger a rematch so fresh jobs appear in candidate matches.
+- Duplicate raw records are filtered before ingest, and database uniqueness on `raw_jobs` and `jobs` still prevents repeated rows.
+
+Candidate submission now also accepts optional `job_keywords` as a comma-separated multipart field if you want to create the first recurring search at upload time.
+
+Logging:
+
+- Shared structured logging is configured across `job-api`, `crawler-api`, `candidate-api`, and `candidate-worker`.
+- Request logs include request ID, method, path, status code, and duration.
+- Background logs include candidate IDs, task IDs, providers, fetched counts, stored counts, and duplicate-filter counts at the appropriate `INFO`/`WARNING` levels.
 
 ## Docker images
 
@@ -204,6 +223,14 @@ helm template job-aggregator ./helm-chart -f ./helm-chart/examples/nats.values.y
 ```
 
 Set `crawlerApi.imageVariant=browser` to switch the single `crawler-api` deployment from `ghcr.io/lynh7/job-aggregator-crawler-api` to `ghcr.io/lynh7/job-aggregator-crawler-api-browser`. The default is `lightweight`. When the `browser` variant is selected, the chart also sets `CRAWL_BACKEND=crawl4ai`.
+
+Database wiring behavior:
+
+- By default, the chart injects `DATABASE_URL=sqlite:////app/data/jobs.db` for `job-api`, `candidate-api`, and `candidate-worker`.
+- The default SQLite path uses the shared volume mount at `/app/data`.
+- `crawler-api` does not get `DATABASE_URL` because it pushes raw records to `job-api` and does not persist directly.
+- If you want PostgreSQL or Supabase, enable `database.connection.enabled=true` and set `database.connection.secretName` to a Secret containing the connection string at the configured key.
+- `helm-chart/examples/existing-secret.values.yaml` shows the intended secret-backed database configuration.
 
 If your cluster injects runtime configuration from an existing Secret, set `global.envFrom` or use `helm-chart/examples/existing-secret.values.yaml`. The chart no longer assumes a `job-aggregator-env` Secret exists by default.
 

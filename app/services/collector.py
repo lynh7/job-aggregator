@@ -6,12 +6,15 @@ from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
 
 from app.business_rules.base import RuleResult
+from app.logging import get_logger
 from app.business_rules.registry import BusinessRulesRegistry
 from app.config import Settings
 from app.connectors.base import JobProvider
 from app.models import Job, RawJob
 from app.schemas import RawJobRecord
 from app.services.exporter import export_jobs
+
+logger = get_logger(__name__)
 
 
 async def collect_jobs(
@@ -20,15 +23,31 @@ async def collect_jobs(
     location: str | None,
     limit: int,
 ) -> list[RawJobRecord]:
+    logger.info(
+        "collector.fetch.start",
+        provider_count=len(providers),
+        keywords=keywords,
+        location=location,
+        limit_per_provider=limit,
+    )
     batches = await asyncio.gather(
         *(provider.search(keywords, location, limit) for provider in providers)
     )
-    return [job for batch in batches for job in batch]
+    records = [job for batch in batches for job in batch]
+    deduped = dedupe_raw_job_records(records)
+    logger.info(
+        "collector.fetch.completed",
+        fetched=len(records),
+        unique_records=len(deduped),
+        duplicates_filtered=len(records) - len(deduped),
+    )
+    return deduped
 
 
 def apply_business_rules(
     registry: BusinessRulesRegistry, records: list[RawJobRecord]
 ) -> list[RuleResult]:
+    logger.info("collector.rules.apply", record_count=len(records))
     return [registry.apply(record) for record in records]
 
 
@@ -41,6 +60,12 @@ def persist_results(
 ) -> tuple[list[Job], Path | None, Path | None]:
     stored_raw = store_raw_jobs(session, results)
     stored_master = store_master_jobs(session, results, stored_raw)
+    logger.info(
+        "collector.persist.completed",
+        raw_jobs=len(stored_raw),
+        master_jobs=len(stored_master),
+        exports_enabled=export,
+    )
     if not export:
         return stored_master, None, None
     json_path, xlsx_path = export_jobs(stored_master, settings.export_dir)
@@ -48,6 +73,17 @@ def persist_results(
 
 
 def store_raw_jobs(session: Session, results: list[RuleResult]) -> list[RawJob]:
+    if not results:
+        return []
+
+    keys = [_raw_key(result.raw.provider, result.raw.api_version, result.raw.source_record_id) for result in results]
+    existing_keys = set(
+        session.execute(
+            select(RawJob.provider, RawJob.api_version, RawJob.source_record_id).where(
+                tuple_(RawJob.provider, RawJob.api_version, RawJob.source_record_id).in_(keys)
+            )
+        ).all()
+    )
     for result in results:
         values = result.raw.model_dump()
         values["rule_version"] = result.rule_version
@@ -76,8 +112,7 @@ def store_raw_jobs(session: Session, results: list[RuleResult]) -> list[RawJob]:
             else:
                 session.add(RawJob(**values))
     session.commit()
-    keys = [_raw_key(result.raw.provider, result.raw.api_version, result.raw.source_record_id) for result in results]
-    return list(
+    stored = list(
         session.scalars(
             select(RawJob).where(
                 tuple_(
@@ -87,7 +122,14 @@ def store_raw_jobs(session: Session, results: list[RuleResult]) -> list[RawJob]:
                 ).in_(keys)
             )
         )
-    ) if keys else []
+    )
+    logger.info(
+        "collector.raw_jobs.stored",
+        total=len(stored),
+        created=max(len(stored) - len(existing_keys), 0),
+        updated=min(len(existing_keys), len(stored)),
+    )
+    return stored
 
 
 def store_master_jobs(session: Session, results: list[RuleResult], raw_jobs: list[RawJob]) -> list[Job]:
@@ -96,6 +138,18 @@ def store_master_jobs(session: Session, results: list[RuleResult], raw_jobs: lis
         for raw in raw_jobs
     }
     master_keys: list[tuple[str, str, str]] = []
+    candidate_keys = [
+        _raw_key(result.raw.provider, result.raw.api_version, result.raw.source_record_id)
+        for result in results
+        if result.standard is not None
+    ]
+    existing_keys = set(
+        session.execute(
+            select(Job.provider, Job.api_version, Job.source_record_id).where(
+                tuple_(Job.provider, Job.api_version, Job.source_record_id).in_(candidate_keys)
+            )
+        ).all()
+    ) if candidate_keys else set()
 
     for result in results:
         if result.standard is None:
@@ -141,8 +195,10 @@ def store_master_jobs(session: Session, results: list[RuleResult], raw_jobs: lis
             else:
                 session.add(Job(**values))
 
+    if not master_keys:
+        return []
     session.commit()
-    return list(
+    stored = list(
         session.scalars(
             select(Job).where(
                 tuple_(
@@ -152,7 +208,26 @@ def store_master_jobs(session: Session, results: list[RuleResult], raw_jobs: lis
                 ).in_(master_keys)
             )
         )
-    ) if master_keys else []
+    )
+    logger.info(
+        "collector.master_jobs.stored",
+        total=len(stored),
+        created=max(len(stored) - len(existing_keys), 0),
+        updated=min(len(existing_keys), len(stored)),
+    )
+    return stored
+
+
+def dedupe_raw_job_records(records: list[RawJobRecord]) -> list[RawJobRecord]:
+    seen: set[tuple[str, str, str]] = set()
+    deduped: list[RawJobRecord] = []
+    for record in records:
+        key = _raw_key(record.provider, record.api_version, record.source_record_id)
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(record)
+    return deduped
 
 
 def _raw_key(provider: str, api_version: str, source_record_id: str) -> tuple[str, str, str]:
