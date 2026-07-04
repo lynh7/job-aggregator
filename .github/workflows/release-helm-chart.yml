@@ -153,6 +153,47 @@ jobs:
           values_path.write_text(values_text, encoding="utf-8")
           PY
 
+      - name: Sync source chart version
+        if: ${{ steps.version.outputs.should_release == 'true' }}
+        env:
+          VERSION_SEMVER: ${{ steps.version.outputs.semver }}
+          TARGET_BRANCH: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_branch || github.ref_name }}
+        run: |
+          python3 - <<'PY'
+          import os
+          import re
+          from pathlib import Path
+
+          version = os.environ["VERSION_SEMVER"]
+
+          chart_path = Path("helm-chart/Chart.yaml")
+          chart_text = chart_path.read_text(encoding="utf-8")
+          chart_text = re.sub(r"(?m)^version:\s*.*$", f"version: {version}", chart_text, count=1)
+          chart_text = re.sub(r'(?m)^appVersion:\s*.*$', f'appVersion: "{version}"', chart_text, count=1)
+          chart_path.write_text(chart_text, encoding="utf-8")
+
+          values_path = Path("helm-chart/values.yaml")
+          values_text = values_path.read_text(encoding="utf-8")
+          values_text = re.sub(
+              r'(?m)^  imageTag:\s*".*"$',
+              f'  imageTag: "{version}"',
+              values_text,
+              count=1,
+          )
+          values_path.write_text(values_text, encoding="utf-8")
+          PY
+
+          if git diff --quiet -- helm-chart/Chart.yaml helm-chart/values.yaml; then
+            echo "Source chart files already match ${VERSION_SEMVER}."
+            exit 0
+          fi
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add helm-chart/Chart.yaml helm-chart/values.yaml
+          git commit -m "Sync chart version v${VERSION_SEMVER}"
+          git push origin "HEAD:${TARGET_BRANCH}"
+
       - name: Validate default chart render
         if: ${{ steps.version.outputs.should_release == 'true' }}
         run: helm template job-aggregator ./.release/helm-chart
