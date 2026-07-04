@@ -2,9 +2,9 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from app.logging import configure_logging, log_request_middleware
 from crawler_service.config import get_settings
 from crawler_service.routes import router
+from shared.logging import configure_logging, log_request_middleware
 
 
 @asynccontextmanager

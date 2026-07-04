@@ -2,10 +2,10 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from app.config import get_settings
-from app.database import Base, engine
-from app.logging import configure_logging, log_request_middleware
 from candidate_service.routes import router
+from shared.config import get_settings
+from shared.database import Base, engine
+from shared.logging import configure_logging, log_request_middleware
 
 
 @asynccontextmanager

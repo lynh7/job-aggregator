@@ -2,10 +2,6 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.config import Settings, get_settings
-from app.database import get_db
-from app.logging import get_logger
-from app.models import Candidate, CandidateProfile, CandidateTask, JobApplication, JobMatch
 from candidate_service.schemas import (
     CandidateApplicationResponse,
     CandidateApplyRequest,
@@ -28,6 +24,10 @@ from candidate_service.service import (
     list_candidate_job_searches,
     upsert_candidate_job_search,
 )
+from shared.config import Settings, get_settings
+from shared.database import get_db
+from shared.logging import get_logger
+from shared.models import Candidate, CandidateProfile, CandidateTask, JobApplication, JobMatch
 
 router = APIRouter()
 logger = get_logger(__name__)

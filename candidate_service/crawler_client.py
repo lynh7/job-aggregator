@@ -1,8 +1,8 @@
 import httpx
 
-from app.config import Settings
-from app.logging import get_logger
 from crawler_service.schemas import CrawlRequest, CrawlResponse
+from shared.config import Settings
+from shared.logging import get_logger
 
 logger = get_logger(__name__)
 

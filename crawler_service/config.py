@@ -1,6 +1,6 @@
 from functools import lru_cache
 
-from app.config import Settings
+from shared.config import Settings
 
 
 class CrawlerSettings(Settings):

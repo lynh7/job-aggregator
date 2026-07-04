@@ -19,6 +19,13 @@ response, applying versioned business rules, and exporting JSON/XLSX files.
 - `helm-chart/` for the recommended Kubernetes deployment topology
 - Docker-ready
 
+## Code Layout
+
+- `app/`: job API-only code
+- `shared/`: shared runtime modules used across services
+- `crawler_service/`: crawler-only code
+- `candidate_service/`: candidate API and worker code
+
 ## Architecture
 
 ```text

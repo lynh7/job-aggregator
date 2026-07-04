@@ -3,7 +3,7 @@ from datetime import UTC, datetime
 
 from openpyxl import load_workbook
 
-from app.schemas import JobResponse
+from shared.schemas import JobResponse
 from app.services.exporter import export_jobs
 
 

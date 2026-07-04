@@ -1,9 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException
 
-from app.logging import get_logger
 from crawler_service.config import CrawlerSettings, get_settings
 from crawler_service.schemas import CrawlRequest, CrawlResponse
 from crawler_service.service import crawl_jobs, push_to_core
+from shared.logging import get_logger
 
 router = APIRouter()
 logger = get_logger(__name__)

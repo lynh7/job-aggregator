@@ -1,8 +1,8 @@
 from bs4 import Tag
 
-from app.schemas import RawJobRecord
 from crawler_service.crawlers.base import JobCrawler
 from crawler_service.crawlers.common import join_texts, html_soup, normalize_job_url, safe_attr, safe_text, slugify_keyword
+from shared.schemas import RawJobRecord
 
 
 class ITViecCrawler(JobCrawler):

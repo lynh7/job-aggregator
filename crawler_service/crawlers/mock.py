@@ -1,5 +1,5 @@
-from app.schemas import RawJobRecord
 from crawler_service.crawlers.base import JobCrawler
+from shared.schemas import RawJobRecord
 
 
 class MockCrawler(JobCrawler):

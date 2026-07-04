@@ -9,11 +9,16 @@ from sqlalchemy import delete, select
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
 
-from app.config import Settings
 from app.connectors.base import ProviderApplicationRequest
 from app.connectors.registry import build_providers
-from app.logging import get_logger
-from app.models import (
+from candidate_service.crawler_client import trigger_candidate_crawl
+from candidate_service.job_projection import project_master_job
+from candidate_service.matching import MATCH_RULE_VERSION, score_candidate_job
+from candidate_service.parsing import PARSER_VERSION, extract_document_text, parse_candidate_profile
+from candidate_service.task_queue import enqueue_candidate_task
+from shared.config import Settings
+from shared.logging import get_logger
+from shared.models import (
     Candidate,
     CandidateDocument,
     CandidateJobSearch,
@@ -22,11 +27,6 @@ from app.models import (
     JobApplication,
     JobMatch,
 )
-from candidate_service.crawler_client import trigger_candidate_crawl
-from candidate_service.job_projection import project_master_job
-from candidate_service.matching import MATCH_RULE_VERSION, score_candidate_job
-from candidate_service.parsing import PARSER_VERSION, extract_document_text, parse_candidate_profile
-from candidate_service.task_queue import enqueue_candidate_task
 
 logger = get_logger(__name__)
 

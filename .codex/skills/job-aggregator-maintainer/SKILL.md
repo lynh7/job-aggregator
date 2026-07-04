@@ -11,6 +11,7 @@ deployment packaging, or operational behavior.
 ## Repo map
 
 - `app/`: core job API, ingest endpoint, raw job persistence, master-data projection, business rules.
+- `shared/`: shared runtime modules such as config, database, models, schemas, and logging.
 - `crawler_service/`: crawl4ai-backed crawler API for TopCV, ITViec, and future site adapters.
 - `candidate_service/`: CV intake API, parsing, matching, task queue worker.
 - `docker/`: service-specific Dockerfiles.
@@ -21,6 +22,7 @@ deployment packaging, or operational behavior.
 ## Runtime rules
 
 - Keep `raw_jobs.payload` unchanged. Provider interpretation belongs in `app/business_rules/`.
+- Keep cross-service runtime code in `shared/`, not in `app/`.
 - The crawler is a separate service. It should crawl source pages and send raw records to `POST /api/v1/ingest/raw-jobs` on the core API.
 - The crawler backend is deployment-selectable: lightweight `http` or browser `crawl4ai`.
 - Keep the core API authoritative for normalization, master-data persistence, and JSON/XLSX export generation.

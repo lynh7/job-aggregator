@@ -3,8 +3,8 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import Select, select
 from sqlalchemy.orm import Session
 
-from app.logging import get_logger
-from app.models import CandidateTask
+from shared.logging import get_logger
+from shared.models import CandidateTask
 
 logger = get_logger(__name__)
 

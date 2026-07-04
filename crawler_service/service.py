@@ -1,11 +1,11 @@
 import httpx
 
-from app.logging import get_logger
-from app.schemas import IngestRawJobsRequest, RawJobRecord
 from app.services.collector import dedupe_raw_job_records
 from crawler_service.config import CrawlerSettings
 from crawler_service.crawlers.registry import build_crawlers
 from crawler_service.schemas import CrawlRequest, CrawlResponse
+from shared.logging import get_logger
+from shared.schemas import IngestRawJobsRequest, RawJobRecord
 
 logger = get_logger(__name__)
 

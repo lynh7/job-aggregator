@@ -5,9 +5,6 @@ from pathlib import Path
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.config import Settings
-from app.database import Base
-from app.models import Candidate, CandidateJobSearch, CandidateTask, Job, JobApplication, JobMatch
 from candidate_service.service import (
     create_candidate_submission,
     enqueue_due_job_search_tasks,
@@ -18,6 +15,9 @@ from candidate_service.service import (
     upsert_candidate_job_search,
 )
 from candidate_service.task_queue import claim_candidate_task, enqueue_candidate_task
+from shared.config import Settings
+from shared.database import Base
+from shared.models import Candidate, CandidateJobSearch, CandidateTask, Job, JobApplication, JobMatch
 
 
 class UploadStub:

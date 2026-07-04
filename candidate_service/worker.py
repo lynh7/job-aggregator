@@ -3,10 +3,6 @@ import time
 
 from sqlalchemy.orm import Session
 
-from app.config import get_settings
-from app.database import Base, SessionLocal, engine
-from app.logging import configure_logging, get_logger
-from app.models import Candidate
 from candidate_service.service import (
     enqueue_due_job_search_tasks,
     process_candidate_job_search,
@@ -15,6 +11,10 @@ from candidate_service.service import (
     rematch_candidate,
 )
 from candidate_service.task_queue import claim_candidate_task, complete_candidate_task, fail_candidate_task
+from shared.config import get_settings
+from shared.database import Base, SessionLocal, engine
+from shared.logging import configure_logging, get_logger
+from shared.models import Candidate
 
 logger = get_logger(__name__)
 

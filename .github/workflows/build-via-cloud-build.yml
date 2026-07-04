@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - 'app/**'
+      - 'shared/**'
       - 'candidate_service/**'
       - 'crawler_service/**'
       - 'docker/**'
@@ -13,6 +14,7 @@ on:
       - '.dockerignore'
       - 'cloudbuild.remote.yaml'
       - '.github/workflows/build-via-cloud-build.yml'
+      - '.github/scripts/**'
   workflow_dispatch:
     inputs:
       run_mode:
@@ -126,12 +128,16 @@ jobs:
                   'cloudbuild.remote.yaml',
                   'pyproject.toml',
                   '.github/workflows/build-via-cloud-build.yml',
+                  '.github/workflows/release-helm-chart.yml',
+                  '.github/scripts/chart_versioning.py',
               }
               if any(path in shared_all_files for path in changed):
                   selected = set(images)
               else:
                   for path in changed:
                       if path.startswith('app/'):
+                          selected.add('job-api')
+                      if path.startswith('shared/'):
                           selected.update(images)
                       if path == 'docker/job-api.Dockerfile':
                           selected.add('job-api')
@@ -169,12 +175,16 @@ jobs:
                   'cloudbuild.remote.yaml',
                   'pyproject.toml',
                   '.github/workflows/build-via-cloud-build.yml',
+                  '.github/workflows/release-helm-chart.yml',
+                  '.github/scripts/chart_versioning.py',
               }
               if any(path in shared_all_files for path in changed):
                   selected = set(images)
               else:
                   for path in changed:
                       if path.startswith('app/'):
+                          selected.add('job-api')
+                      if path.startswith('shared/'):
                           selected.update(images)
                       if path == 'docker/job-api.Dockerfile':
                           selected.add('job-api')

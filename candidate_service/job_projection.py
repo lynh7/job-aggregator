@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from app.models import Job
+from shared.models import Job
 
 
 @dataclass(frozen=True)

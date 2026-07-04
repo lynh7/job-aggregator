@@ -8,9 +8,9 @@ os.environ.setdefault("INGEST_API_TOKEN", "test-ingest-token")
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
-from app.database import Base, SessionLocal, engine
 from app.main import app
-from app.models import Job, RawJob
+from shared.database import Base, SessionLocal, engine
+from shared.models import Job, RawJob
 
 client = TestClient(app)
 
