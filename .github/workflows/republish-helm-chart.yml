@@ -5,6 +5,8 @@ on:
 
 permissions:
   contents: write
+  pages: write
+  id-token: write
 
 concurrency:
   group: republish-helm-chart
@@ -14,6 +16,8 @@ jobs:
   release:
     runs-on:
       - self-hosted
+    outputs:
+      version: ${{ steps.chart.outputs.version }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -62,7 +66,7 @@ jobs:
           helm package ./helm-chart --destination ./.release/packages
           test -f "./.release/packages/job-aggregator-${VERSION_SEMVER}.tgz"
 
-      - name: Publish GitHub Pages chart repo
+      - name: Prepare Pages chart repo content
         env:
           VERSION_SEMVER: ${{ steps.chart.outputs.version }}
           PAGES_URL: https://lynh7.github.io/job-aggregator
@@ -72,7 +76,7 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
 
-          rm -rf .release/gh-pages
+          rm -rf .release/gh-pages .release/pages-site
           if git ls-remote --exit-code --heads origin gh-pages >/dev/null 2>&1; then
             git fetch origin gh-pages
             git worktree add .release/gh-pages origin/gh-pages
@@ -89,17 +93,43 @@ jobs:
             )
           fi
 
-          cp ./.release/packages/*.tgz ./.release/gh-pages/
-          touch ./.release/gh-pages/.nojekyll
-          helm repo index ./.release/gh-pages --url "${PAGES_URL}"
+          mkdir -p .release/pages-site
+          cp -R ./.release/gh-pages/. ./.release/pages-site/ 2>/dev/null || true
+          cp ./.release/packages/*.tgz ./.release/pages-site/
+          touch ./.release/pages-site/.nojekyll
+          helm repo index ./.release/pages-site --url "${PAGES_URL}"
 
           (
             cd .release/gh-pages
+            rm -rf ./*
+            rm -f .nojekyll index.yaml
+            cp -R ../pages-site/. .
             git add .
             if git diff --cached --quiet; then
               echo "No chart repository changes to publish."
               exit 0
             fi
-            git commit -m "Republish Helm chart v${VERSION_SEMVER}"
+            git commit -m "Snapshot Helm chart site v${VERSION_SEMVER}"
             git push origin gh-pages
           )
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload GitHub Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./.release/pages-site
+
+  deploy-pages:
+    needs:
+      - release
+    runs-on:
+      - self-hosted
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
