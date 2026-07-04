@@ -34,7 +34,7 @@ jobApi:
   replicaCount: 2
   image:
     repository: ghcr.io/lynh7/job-aggregator-job-api
-    tag: "0.1.8"
+    tag: "0.1.9"
     pullPolicy: ""
   command: []
   args: []
@@ -84,10 +84,10 @@ crawlerApi:
   imageVariants:
     lightweight:
       repository: ghcr.io/lynh7/job-aggregator-crawler-api
-      tag: "0.1.8"
+      tag: "0.1.9"
     browser:
       repository: ghcr.io/lynh7/job-aggregator-crawler-api-browser
-      tag: "0.1.8"
+      tag: "0.1.9"
   image:
     pullPolicy: ""
   command: []
@@ -139,7 +139,7 @@ candidateApi:
   queueBackend: database
   image:
     repository: ghcr.io/lynh7/job-aggregator-candidate-api
-    tag: "0.1.8"
+    tag: "0.1.9"
     pullPolicy: ""
   command: []
   args: []
@@ -184,7 +184,7 @@ candidateWorker:
   queueBackend: database
   image:
     repository: ghcr.io/lynh7/job-aggregator-candidate-worker
-    tag: "0.1.8"
+    tag: "0.1.9"
     pullPolicy: ""
   command: []
   args: []
