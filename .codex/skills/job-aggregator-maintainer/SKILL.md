@@ -78,7 +78,7 @@ make build-crawler-api-browser
 
 ```bash
 sed -n '1,260p' .github/workflows/build-via-cloud-build.yml
-sed -n '1,260p' .github/workflows/release-helm-chart.yml
+sed -n '1,260p' .github/workflows/republish-helm-chart.yml
 sed -n '1,220p' cloudbuild.remote.yaml
 find deploy/terraform/gcp-cloud-build-runner -maxdepth 2 -type f
 ```

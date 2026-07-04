@@ -1,4 +1,4 @@
-name: Release Helm Chart
+name: Republish Helm Chart
 
 on:
   workflow_dispatch:
@@ -7,7 +7,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: release-helm-chart
+  group: republish-helm-chart
   cancel-in-progress: false
 
 jobs:
@@ -100,6 +100,6 @@ jobs:
               echo "No chart repository changes to publish."
               exit 0
             fi
-            git commit -m "Release Helm chart v${VERSION_SEMVER}"
+            git commit -m "Republish Helm chart v${VERSION_SEMVER}"
             git push origin gh-pages
           )

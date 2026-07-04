@@ -251,7 +251,7 @@ If your cluster injects runtime configuration from an existing Secret, set `glob
 
 Chart releases are published directly from `.github/workflows/build-via-cloud-build.yml` after successful image builds and chart-state sync. The workflow packages the chart exactly as committed, including the per-service image tags already written to `helm-chart/values.yaml`.
 
-`.github/workflows/release-helm-chart.yml` remains available as a manual fallback if you need to republish the current chart state without rebuilding images.
+`.github/workflows/republish-helm-chart.yml` remains available as a manual fallback if you need to republish the current chart state without rebuilding images.
 
 - `helm-chart/Chart.yaml` `version`
 - `helm-chart/Chart.yaml` `appVersion`

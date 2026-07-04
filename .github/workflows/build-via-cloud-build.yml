@@ -128,7 +128,7 @@ jobs:
                   'cloudbuild.remote.yaml',
                   'pyproject.toml',
                   '.github/workflows/build-via-cloud-build.yml',
-                  '.github/workflows/release-helm-chart.yml',
+                  '.github/workflows/republish-helm-chart.yml',
                   '.github/scripts/chart_versioning.py',
               }
               if any(path in shared_all_files for path in changed):
@@ -175,7 +175,7 @@ jobs:
                   'cloudbuild.remote.yaml',
                   'pyproject.toml',
                   '.github/workflows/build-via-cloud-build.yml',
-                  '.github/workflows/release-helm-chart.yml',
+                  '.github/workflows/republish-helm-chart.yml',
                   '.github/scripts/chart_versioning.py',
               }
               if any(path in shared_all_files for path in changed):
