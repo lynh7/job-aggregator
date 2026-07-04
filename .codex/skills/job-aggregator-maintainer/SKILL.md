@@ -123,7 +123,7 @@ helm template job-aggregator ./helm-chart -f ./helm-chart/examples/nats.values.y
   - `docker/candidate-api.Dockerfile`
   - `docker/candidate-worker.Dockerfile`
 - Keep service-specific image names, immutable tags, and ports aligned across Cloud Build and Helm values.
-- Keep Helm release automation aligned with the image build workflow. The build workflow commits updated per-service image tags and the next chart patch version into `helm-chart/`, and the chart release packages that committed chart state on `push` to `main`.
+- Keep Helm release automation aligned with the image build workflow. The build workflow commits updated per-service image tags and the next chart patch version into `helm-chart/`, then validates, packages, and publishes that chart state in the same workflow run.
 - Treat `/app/data` storage, PostgreSQL wiring, and ingest token wiring as deployment contract.
 
 ## Validation expectations

@@ -242,7 +242,9 @@ Database wiring behavior:
 
 If your cluster injects runtime configuration from an existing Secret, set `global.envFrom` or use `helm-chart/examples/existing-secret.values.yaml`. The chart no longer assumes a `job-aggregator-env` Secret exists by default.
 
-Chart releases are published from `.github/workflows/release-helm-chart.yml` on pushes to `main` that change `helm-chart/**`. The release packages the chart exactly as committed, including the per-service image tags already written to `helm-chart/values.yaml`.
+Chart releases are published directly from `.github/workflows/build-via-cloud-build.yml` after successful image builds and chart-state sync. The workflow packages the chart exactly as committed, including the per-service image tags already written to `helm-chart/values.yaml`.
+
+`.github/workflows/release-helm-chart.yml` remains available as a manual fallback if you need to republish the current chart state without rebuilding images.
 
 - `helm-chart/Chart.yaml` `version`
 - `helm-chart/Chart.yaml` `appVersion`

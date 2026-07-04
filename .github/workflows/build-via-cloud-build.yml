@@ -423,6 +423,71 @@ jobs:
           git commit -m "Update chart defaults for release v${CHART_VERSION}"
           git push origin "HEAD:${TARGET_BRANCH}"
 
+      - name: Setup Helm
+        uses: azure/setup-helm@v4
+
+      - name: Validate updated default chart render
+        run: helm template job-aggregator ./helm-chart
+
+      - name: Validate updated browser crawler render
+        run: helm template job-aggregator ./helm-chart -f ./helm-chart/examples/browser-crawler.values.yaml
+
+      - name: Validate updated shared PVC override render
+        run: helm template job-aggregator ./helm-chart -f ./helm-chart/examples/existing-shared-pvc.values.yaml
+
+      - name: Validate updated NATS render
+        run: helm template job-aggregator ./helm-chart -f ./helm-chart/examples/nats.values.yaml
+
+      - name: Package updated chart
+        env:
+          CHART_VERSION: ${{ needs.resolve-versions.outputs.chart_version }}
+        run: |
+          mkdir -p .release/packages
+          helm package ./helm-chart --destination ./.release/packages
+          test -f "./.release/packages/job-aggregator-${CHART_VERSION}.tgz"
+
+      - name: Publish GitHub Pages chart repo
+        env:
+          CHART_VERSION: ${{ needs.resolve-versions.outputs.chart_version }}
+          PAGES_URL: https://lynh7.github.io/job-aggregator
+        run: |
+          set -euo pipefail
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+
+          rm -rf .release/gh-pages
+          if git ls-remote --exit-code --heads origin gh-pages >/dev/null 2>&1; then
+            git fetch origin gh-pages
+            git worktree add .release/gh-pages origin/gh-pages
+            (
+              cd .release/gh-pages
+              git checkout -B gh-pages origin/gh-pages
+            )
+          else
+            git worktree add --detach .release/gh-pages
+            (
+              cd .release/gh-pages
+              git checkout --orphan gh-pages
+              find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+            )
+          fi
+
+          cp ./.release/packages/*.tgz ./.release/gh-pages/
+          touch ./.release/gh-pages/.nojekyll
+          helm repo index ./.release/gh-pages --url "${PAGES_URL}"
+
+          (
+            cd .release/gh-pages
+            git add .
+            if git diff --cached --quiet; then
+              echo "No chart repository changes to publish."
+              exit 0
+            fi
+            git commit -m "Release Helm chart v${CHART_VERSION}"
+            git push origin gh-pages
+          )
+
   test-release-flow:
     needs:
       - detect-images
