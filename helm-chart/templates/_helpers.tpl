@@ -53,8 +53,9 @@ app.kubernetes.io/component: {{ .name }}
 {{- end -}}
 
 {{- define "job-aggregator.componentImage" -}}
-{{- $tag := .component.image.tag | default .root.Values.global.imageTag -}}
-{{- printf "%s:%s" .component.image.repository $tag -}}
+{{- $repository := required "component image repository is required" .component.image.repository -}}
+{{- $tag := required "component image tag is required" .component.image.tag -}}
+{{- printf "%s:%s" $repository $tag -}}
 {{- end -}}
 
 {{- define "job-aggregator.renderEnv" -}}

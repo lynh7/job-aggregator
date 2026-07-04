@@ -152,63 +152,46 @@ jobs:
           echo "Image count: ${{ steps.detect.outputs.count }}"
           echo "Images: ${{ steps.detect.outputs.names }}"
 
-  resolve-version:
+  resolve-versions:
     needs:
       - detect-images
     if: ${{ needs.detect-images.outputs.count != '0' }}
     runs-on:
       - self-hosted
     outputs:
-      git_tag: ${{ steps.version.outputs.git_tag }}
-      semver: ${{ steps.version.outputs.semver }}
+      matrix: ${{ steps.plan.outputs.matrix }}
+      chart_version: ${{ steps.plan.outputs.chart_version }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Fetch tags
-        run: git fetch --tags --force
-
-      - name: Resolve next patch version
-        id: version
+      - name: Plan image and chart versions
+        id: plan
+        env:
+          DETECTED_MATRIX: ${{ needs.detect-images.outputs.matrix }}
         run: |
+          export PLAN_JSON
+          PLAN_JSON="$(python3 .github/scripts/chart_versioning.py plan-build --matrix-json "${DETECTED_MATRIX}")"
+          echo "Planned release state: ${PLAN_JSON}"
           python3 - <<'PY'
-          import re
-          import subprocess
-          from pathlib import Path
+          import json
           import os
+          from pathlib import Path
 
-          tags = subprocess.check_output(
-              ['git', 'tag', '--list', 'v*', '--sort=version:refname'],
-              text=True,
-          ).splitlines()
-          tags = [tag.strip() for tag in tags if tag.strip()]
-          latest = tags[-1] if tags else None
-
-          if latest is None:
-              next_tag = 'v0.1.0'
-          else:
-              match = re.fullmatch(r'v(\d+)\.(\d+)\.(\d+)', latest)
-              if not match:
-                  raise RuntimeError(f'Latest version tag has unexpected format: {latest!r}')
-              major, minor, patch = map(int, match.groups())
-              next_tag = f'v{major}.{minor}.{patch + 1}'
-
-          semver = next_tag.removeprefix('v')
-          print(f'Latest version tag: {latest or "<none>"}')
-          print(f'Next version tag: {next_tag}')
-
-          output = Path(os.environ['GITHUB_OUTPUT'])
-          with output.open('a', encoding='utf-8') as fh:
-              fh.write(f'git_tag={next_tag}\n')
-              fh.write(f'semver={semver}\n')
+          payload = json.loads(os.environ["PLAN_JSON"])
+          output = Path(os.environ["GITHUB_OUTPUT"])
+          with output.open("a", encoding="utf-8") as fh:
+              fh.write(f"matrix={json.dumps(payload['matrix'], separators=(',', ':'))}\n")
+              fh.write(f"chart_version={payload['chart_version']}\n")
           PY
+        shell: bash
 
   cloud-build:
     needs:
       - detect-images
-      - resolve-version
+      - resolve-versions
     if: ${{ needs.detect-images.outputs.count != '0' }}
     runs-on:
       - self-hosted
@@ -216,11 +199,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include: ${{ fromJson(needs.detect-images.outputs.matrix) }}
+        include: ${{ fromJson(needs.resolve-versions.outputs.matrix) }}
     env:
       GHCR_USERNAME: trthienan17
-      VERSION_TAG: ${{ needs.resolve-version.outputs.git_tag }}
-      VERSION_SEMVER: ${{ needs.resolve-version.outputs.semver }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -323,10 +304,11 @@ jobs:
           GHCR_IMAGE: ${{ matrix.image }}
           DOCKERFILE: ${{ matrix.dockerfile }}
           BUILD_CONTEXT: ${{ matrix.context }}
+          IMAGE_VERSION: ${{ matrix.version }}
         run: |
-          echo "Submitting Cloud Build for ${GHCR_IMAGE}:${VERSION_SEMVER}"
+          echo "Submitting Cloud Build for ${GHCR_IMAGE}:${IMAGE_VERSION}"
           echo "Component: ${{ matrix.name }}"
-          echo "Version tag: ${VERSION_TAG}"
+          echo "Version tag: ${IMAGE_VERSION}"
 
           PROJECT_ID="$(gcloud projects describe "${GCP_PROJECT_ID}" --format='value(projectId)')"
           SHORT_SHA="${GITHUB_SHA::7}"
@@ -339,12 +321,12 @@ jobs:
             --project="${PROJECT_ID}" \
             --no-source \
             --config=cloudbuild.remote.yaml \
-            --substitutions=_REPO_URL="https://github.com/${GITHUB_REPOSITORY}.git",_REVISION="${GITHUB_SHA}",_SHORT_SHA="${SHORT_SHA}",_GHCR_IMAGE="${GHCR_IMAGE}",_GHCR_USERNAME="${GHCR_USERNAME}",_DOCKERFILE="${DOCKERFILE}",_CONTEXT="${BUILD_CONTEXT}",_GITHUB_REPOSITORY="${GITHUB_REPOSITORY}",_SEMVER_TAG="${VERSION_SEMVER}"
+            --substitutions=_REPO_URL="https://github.com/${GITHUB_REPOSITORY}.git",_REVISION="${GITHUB_SHA}",_SHORT_SHA="${SHORT_SHA}",_GHCR_IMAGE="${GHCR_IMAGE}",_GHCR_USERNAME="${GHCR_USERNAME}",_DOCKERFILE="${DOCKERFILE}",_CONTEXT="${BUILD_CONTEXT}",_GITHUB_REPOSITORY="${GITHUB_REPOSITORY}",_SEMVER_TAG="${IMAGE_VERSION}"
 
-  create-version-tag:
+  sync-chart-state:
     needs:
       - detect-images
-      - resolve-version
+      - resolve-versions
       - cloud-build
     if: ${{ needs.detect-images.outputs.count != '0' && needs.cloud-build.result == 'success' }}
     runs-on:
@@ -355,27 +337,26 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Fetch tags
-        run: git fetch --tags --force
-
-      - name: Create repository tag
+      - name: Apply chart image tags and chart version
         env:
-          VERSION_TAG: ${{ needs.resolve-version.outputs.git_tag }}
+          BUILD_MATRIX: ${{ needs.resolve-versions.outputs.matrix }}
+          CHART_VERSION: ${{ needs.resolve-versions.outputs.chart_version }}
+          TARGET_BRANCH: ${{ github.ref_name }}
         run: |
-          if git rev-parse -q --verify "refs/tags/${VERSION_TAG}" >/dev/null; then
-            echo "Tag ${VERSION_TAG} already exists locally; skipping create."
-            exit 0
-          fi
+          python3 .github/scripts/chart_versioning.py apply-release-state \
+            --matrix-json "${BUILD_MATRIX}" \
+            --chart-version "${CHART_VERSION}"
 
-          if git ls-remote --tags origin "refs/tags/${VERSION_TAG}" | grep -q "${VERSION_TAG}$"; then
-            echo "Tag ${VERSION_TAG} already exists on origin; skipping create."
+          if git diff --quiet -- helm-chart/Chart.yaml helm-chart/values.yaml; then
+            echo "Chart files already up to date."
             exit 0
           fi
 
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git tag "${VERSION_TAG}" "${GITHUB_SHA}"
-          git push origin "${VERSION_TAG}"
+          git add helm-chart/Chart.yaml helm-chart/values.yaml
+          git commit -m "Update chart defaults for release v${CHART_VERSION}"
+          git push origin "HEAD:${TARGET_BRANCH}"
 
   no-op:
     needs:

@@ -38,8 +38,9 @@ deployment packaging, or operational behavior.
   - `ghcr.io/lynh7/job-aggregator-crawler-api`
   - `ghcr.io/lynh7/job-aggregator-crawler-api-browser`
 - GHCR package visibility is managed separately from repo visibility. A public GitHub repo can still publish private GHCR packages unless each package is explicitly made public or pulled with auth.
-- Version source of truth is repo git tags starting at `v0.1.0`. CI only bumps the patch digit and applies the same new version to every image built in that workflow run.
-- Selective builds share one repo version, so unchanged images may not exist for every later patch tag.
+- Image versions are tracked per service in `helm-chart/values.yaml`.
+- CI only bumps the patch digit for services that were actually rebuilt and commits those new default image tags back to `main`.
+- Chart versioning is independent from service image versions; the Helm chart patch can advance even when only one service image tag changes.
 - Use immutable Git SHA image tags in Kubernetes-facing examples and environment values; `latest` is convenience only.
 
 ## Common tasks
@@ -122,7 +123,7 @@ helm template job-aggregator ./helm-chart -f ./helm-chart/examples/nats.values.y
   - `docker/candidate-api.Dockerfile`
   - `docker/candidate-worker.Dockerfile`
 - Keep service-specific image names, immutable tags, and ports aligned across Cloud Build and Helm values.
-- Keep Helm release automation aligned with the image build workflow. The chart release now runs from `workflow_run` after `build-via-cloud-build` succeeds and discovers the new semver tag from that run's head SHA.
+- Keep Helm release automation aligned with the image build workflow. The build workflow commits updated per-service image tags and the next chart patch version into `helm-chart/`, and the chart release packages that committed chart state on `push` to `main`.
 - Treat `/app/data` storage, PostgreSQL wiring, and ingest token wiring as deployment contract.
 
 ## Validation expectations

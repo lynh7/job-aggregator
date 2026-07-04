@@ -1,11 +1,12 @@
 name: Release Helm Chart
 
 on:
-  workflow_run:
-    workflows:
-      - Build Container Via Cloud Build
-    types:
-      - completed
+  push:
+    branches:
+      - main
+    paths:
+      - 'helm-chart/**'
+      - '.github/workflows/release-helm-chart.yml'
   workflow_dispatch:
 
 permissions:
@@ -17,13 +18,6 @@ concurrency:
 
 jobs:
   release:
-    if: >-
-      ${{ github.event_name == 'workflow_dispatch' ||
-          (
-            github.event.workflow_run.conclusion == 'success' &&
-            github.event.workflow_run.head_branch == 'main'
-          )
-        }}
     runs-on:
       - self-hosted
     steps:
@@ -35,194 +29,48 @@ jobs:
       - name: Setup Helm
         uses: azure/setup-helm@v4
 
-      - name: Resolve release version
-        id: version
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          WORKFLOW_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+      - name: Read chart version
+        id: chart
         run: |
           python3 - <<'PY'
           import os
-          import re
-          import subprocess
           from pathlib import Path
 
-          event_name = os.environ["EVENT_NAME"]
-          output = Path(os.environ["GITHUB_OUTPUT"])
+          version = None
+          for line in Path("helm-chart/Chart.yaml").read_text(encoding="utf-8").splitlines():
+              if line.startswith("version:"):
+                  version = line.split(":", 1)[1].strip().strip('"')
+                  break
+          if not version:
+              raise SystemExit("helm-chart/Chart.yaml version is missing")
 
-          def resolve_next_patch_tag() -> tuple[str, str]:
-              tags = subprocess.check_output(
-                  ["git", "tag", "--list", "v*", "--sort=version:refname"],
-                  text=True,
-              ).splitlines()
-              tags = [
-                  tag.strip()
-                  for tag in tags
-                  if re.fullmatch(r"v\d+\.\d+\.\d+", tag.strip())
-              ]
-              latest = tags[-1] if tags else None
-
-              if latest is None:
-                  next_tag = "v0.1.0"
-              else:
-                  match = re.fullmatch(r"v(\d+)\.(\d+)\.(\d+)", latest)
-                  if not match:
-                      raise RuntimeError(
-                          f"Latest version tag has unexpected format: {latest!r}"
-                      )
-                  major, minor, patch = map(int, match.groups())
-                  next_tag = f"v{major}.{minor}.{patch + 1}"
-
-              print(f"Latest version tag: {latest or '<none>'}")
-              print(f"Next version tag: {next_tag}")
-              return next_tag, next_tag.removeprefix("v")
-
-          should_release = False
-          semver = None
-          git_tag = None
-
-          subprocess.run(["git", "fetch", "--tags", "--force"], check=True)
-
-          if event_name == "workflow_dispatch":
-              git_tag, semver = resolve_next_patch_tag()
-              should_release = True
-          else:
-              head_sha = os.environ["WORKFLOW_HEAD_SHA"].strip()
-              if not head_sha:
-                  raise SystemExit("workflow_run.head_sha is missing.")
-
-              raw_tags = subprocess.check_output(
-                  ["git", "tag", "--points-at", head_sha],
-                  text=True,
-              ).splitlines()
-              tags = sorted(
-                  tag.strip()
-                  for tag in raw_tags
-                  if re.fullmatch(r"v\d+\.\d+\.\d+", tag.strip())
-              )
-              if not tags:
-                  print(
-                      f"No semver tag found on workflow head SHA {head_sha}; "
-                      "skipping Helm chart release."
-                  )
-              else:
-                  git_tag = tags[-1]
-                  semver = git_tag.removeprefix("v")
-                  should_release = True
-
-          with output.open("a", encoding="utf-8") as fh:
-              fh.write(f"should_release={'true' if should_release else 'false'}\n")
-              if should_release:
-                  fh.write(f"semver={semver}\n")
-                  fh.write(f"git_tag={git_tag}\n")
+          with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as fh:
+              fh.write(f"version={version}\n")
           PY
-
-      - name: Prepare release chart
-        if: ${{ steps.version.outputs.should_release == 'true' }}
-        env:
-          VERSION_SEMVER: ${{ steps.version.outputs.semver }}
-        run: |
-          python3 - <<'PY'
-          import shutil
-          import os
-          import re
-          from pathlib import Path
-
-          version = os.environ["VERSION_SEMVER"]
-          source_dir = Path("helm-chart")
-          release_dir = Path(".release/helm-chart")
-
-          if release_dir.exists():
-              shutil.rmtree(release_dir)
-          shutil.copytree(source_dir, release_dir)
-
-          chart_path = release_dir / "Chart.yaml"
-          chart_text = chart_path.read_text(encoding="utf-8")
-          chart_text = re.sub(r"(?m)^version:\s*.*$", f"version: {version}", chart_text, count=1)
-          chart_text = re.sub(r'(?m)^appVersion:\s*.*$', f'appVersion: "{version}"', chart_text, count=1)
-          chart_path.write_text(chart_text, encoding="utf-8")
-
-          values_path = release_dir / "values.yaml"
-          values_text = values_path.read_text(encoding="utf-8")
-          values_text = re.sub(
-              r'(?m)^  imageTag:\s*".*"$',
-              f'  imageTag: "{version}"',
-              values_text,
-              count=1,
-          )
-          values_path.write_text(values_text, encoding="utf-8")
-          PY
-
-      - name: Sync source chart version
-        if: ${{ steps.version.outputs.should_release == 'true' }}
-        env:
-          VERSION_SEMVER: ${{ steps.version.outputs.semver }}
-          TARGET_BRANCH: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_branch || github.ref_name }}
-        run: |
-          python3 - <<'PY'
-          import os
-          import re
-          from pathlib import Path
-
-          version = os.environ["VERSION_SEMVER"]
-
-          chart_path = Path("helm-chart/Chart.yaml")
-          chart_text = chart_path.read_text(encoding="utf-8")
-          chart_text = re.sub(r"(?m)^version:\s*.*$", f"version: {version}", chart_text, count=1)
-          chart_text = re.sub(r'(?m)^appVersion:\s*.*$', f'appVersion: "{version}"', chart_text, count=1)
-          chart_path.write_text(chart_text, encoding="utf-8")
-
-          values_path = Path("helm-chart/values.yaml")
-          values_text = values_path.read_text(encoding="utf-8")
-          values_text = re.sub(
-              r'(?m)^  imageTag:\s*".*"$',
-              f'  imageTag: "{version}"',
-              values_text,
-              count=1,
-          )
-          values_path.write_text(values_text, encoding="utf-8")
-          PY
-
-          if git diff --quiet -- helm-chart/Chart.yaml helm-chart/values.yaml; then
-            echo "Source chart files already match ${VERSION_SEMVER}."
-            exit 0
-          fi
-
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add helm-chart/Chart.yaml helm-chart/values.yaml
-          git commit -m "Sync chart version v${VERSION_SEMVER}"
-          git push origin "HEAD:${TARGET_BRANCH}"
 
       - name: Validate default chart render
-        if: ${{ steps.version.outputs.should_release == 'true' }}
-        run: helm template job-aggregator ./.release/helm-chart
+        run: helm template job-aggregator ./helm-chart
 
       - name: Validate browser crawler render
-        if: ${{ steps.version.outputs.should_release == 'true' }}
-        run: helm template job-aggregator ./.release/helm-chart -f ./.release/helm-chart/examples/browser-crawler.values.yaml
+        run: helm template job-aggregator ./helm-chart -f ./helm-chart/examples/browser-crawler.values.yaml
 
       - name: Validate shared PVC override render
-        if: ${{ steps.version.outputs.should_release == 'true' }}
-        run: helm template job-aggregator ./.release/helm-chart -f ./.release/helm-chart/examples/existing-shared-pvc.values.yaml
+        run: helm template job-aggregator ./helm-chart -f ./helm-chart/examples/existing-shared-pvc.values.yaml
 
       - name: Validate NATS render
-        if: ${{ steps.version.outputs.should_release == 'true' }}
-        run: helm template job-aggregator ./.release/helm-chart -f ./.release/helm-chart/examples/nats.values.yaml
+        run: helm template job-aggregator ./helm-chart -f ./helm-chart/examples/nats.values.yaml
 
       - name: Package chart
-        if: ${{ steps.version.outputs.should_release == 'true' }}
         env:
-          VERSION_SEMVER: ${{ steps.version.outputs.semver }}
+          VERSION_SEMVER: ${{ steps.chart.outputs.version }}
         run: |
           mkdir -p .release/packages
-          helm package ./.release/helm-chart --destination ./.release/packages
+          helm package ./helm-chart --destination ./.release/packages
           test -f "./.release/packages/job-aggregator-${VERSION_SEMVER}.tgz"
 
       - name: Publish GitHub Pages chart repo
-        if: ${{ steps.version.outputs.should_release == 'true' }}
         env:
-          VERSION_SEMVER: ${{ steps.version.outputs.semver }}
+          VERSION_SEMVER: ${{ steps.chart.outputs.version }}
           PAGES_URL: https://lynh7.github.io/job-aggregator
         run: |
           set -euo pipefail

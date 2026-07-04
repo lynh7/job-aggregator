@@ -194,7 +194,7 @@ Security constraints implemented:
 - no `pull_request` trigger
 - no public inbound port on the Raspberry Pi runner
 - no Docker image build on the Raspberry Pi runner
-- The Helm chart release uses the same repo semver tags as image builds and updates the chart default image tag to that release version
+- Image builds update only the service tags that were rebuilt, and the Helm chart release packages those committed defaults without rewriting them
 
 Legacy local build agent:
 
@@ -211,6 +211,7 @@ Legacy local build agent:
 - `candidate-worker` enabled by default at 1 replica
 - `nats` disabled by default because `QUEUE_BACKEND=database` is still the live path
 - shared `/app/data` persistence made explicit through `sharedData`
+- default image tags are pinned per service in `helm-chart/values.yaml`
 
 Render the default chart and the shipped override examples:
 
@@ -224,6 +225,13 @@ helm template job-aggregator ./helm-chart -f ./helm-chart/examples/nats.values.y
 
 Set `crawlerApi.imageVariant=browser` to switch the single `crawler-api` deployment from `ghcr.io/lynh7/job-aggregator-crawler-api` to `ghcr.io/lynh7/job-aggregator-crawler-api-browser`. The default is `lightweight`. When the `browser` variant is selected, the chart also sets `CRAWL_BACKEND=crawl4ai`.
 
+Image versioning behavior:
+
+- `helm-chart/values.yaml` is the source of truth for the chart's default image tags.
+- Each service has its own explicit image tag; there is no shared global image tag fallback.
+- The build workflow bumps only the tags for services it actually rebuilt and commits those updated defaults back to `main`.
+- The chart version is bumped independently, so the chart can move from `0.1.5` to `0.1.6` while service image tags diverge, for example `job-api: 0.1.5` and `crawler-api: 0.1.9`.
+
 Database wiring behavior:
 
 - By default, the chart injects `DATABASE_URL=sqlite:////app/data/jobs.db` for `job-api`, `candidate-api`, and `candidate-worker`.
@@ -234,11 +242,11 @@ Database wiring behavior:
 
 If your cluster injects runtime configuration from an existing Secret, set `global.envFrom` or use `helm-chart/examples/existing-secret.values.yaml`. The chart no longer assumes a `job-aggregator-env` Secret exists by default.
 
-Chart releases are published from `.github/workflows/release-helm-chart.yml` after `build-via-cloud-build` completes successfully and creates a repo tag like `v0.1.0`. The workflow reuses that semver for:
+Chart releases are published from `.github/workflows/release-helm-chart.yml` on pushes to `main` that change `helm-chart/**`. The release packages the chart exactly as committed, including the per-service image tags already written to `helm-chart/values.yaml`.
 
 - `helm-chart/Chart.yaml` `version`
 - `helm-chart/Chart.yaml` `appVersion`
-- `helm-chart/values.yaml` `global.imageTag`
+- `helm-chart/values.yaml` per-service `image.tag` defaults
 
 Recommended GitOps split:
 
