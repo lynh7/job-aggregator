@@ -36,6 +36,11 @@ jobs:
           - name: nats
             values_file: examples/nats.values.yaml
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+          
       - name: Setup Helm
         uses: azure/setup-helm@v4
 
