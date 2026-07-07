@@ -34,7 +34,7 @@ jobApi:
   replicaCount: 2
   image:
     repository: ghcr.io/lynh7/job-aggregator-job-api
-    tag: "0.1.10"
+    tag: "0.1.11"
     pullPolicy: ""
   command: []
   args: []
