@@ -1,0 +1,57 @@
+# .github/workflows/validation-cases.yml
+name: Validate Helm Chart
+
+on:
+  workflow_call:
+    inputs:
+      chart-path:
+        description: 'Path to the chart directory to validate'
+        required: true
+        type: string
+      release-name:
+        description: 'Helm release name used for template rendering'
+        required: false
+        type: string
+        default: job-aggregator
+      use-kubeconform:
+        description: 'Run kubeconform schema validation after helm template'
+        required: false
+        type: boolean
+        default: true
+
+jobs:
+  validate:
+    runs-on:
+      - self-hosted
+    strategy:
+      fail-fast: false
+      matrix:
+        case:
+          - name: default
+            values_file: ''
+          - name: browser-crawler
+            values_file: examples/browser-crawler.values.yaml
+          - name: existing-shared-pvc
+            values_file: examples/existing-shared-pvc.values.yaml
+          - name: nats
+            values_file: examples/nats.values.yaml
+    steps:
+      - name: Install kubeconform
+        if: ${{ inputs.use-kubeconform }}
+        run: |
+          curl -sSL https://github.com/yannh/kubeconform/releases/latest/download/kubeconform-linux-amd64.tar.gz \
+            | tar xz kubeconform
+          sudo mv kubeconform /usr/local/bin/
+
+      - name: Render chart (${{ matrix.case.name }})
+        run: |
+          if [ -n "${{ matrix.case.values_file }}" ]; then
+            helm template "${{ inputs.release-name }}" "${{ inputs.chart-path }}" \
+              -f "${{ inputs.chart-path }}/${{ matrix.case.values_file }}" > rendered.yaml
+          else
+            helm template "${{ inputs.release-name }}" "${{ inputs.chart-path }}" > rendered.yaml
+          fi
+
+      - name: Schema-validate rendered manifests
+        if: ${{ inputs.use-kubeconform }}
+        run: kubeconform -summary -strict rendered.yaml

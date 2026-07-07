@@ -14,28 +14,30 @@ on:
       - '.dockerignore'
       - 'cloudbuild.remote.yaml'
       - '.github/workflows/build-via-cloud-build.yml'
+      - '.github/workflows/validation-cases.yml'
       - '.github/scripts/**'
-  workflow_dispatch:
-    inputs:
-      run_mode:
-        description: 'Choose release to build/publish or test to validate the flow without publishing'
-        required: true
-        default: release
-        type: choice
-        options:
-          - release
-          - test
-      build_scope:
-        description: 'Choose auto to respect changed paths or all to force every image through the flow'
-        required: true
-        default: all
-        type: choice
-        options:
-          - all
-          - auto
+  # workflow_dispatch:
+  #   inputs:
+  #     run_mode:
+  #       description: 'Choose release to build/publish or test to validate the flow without publishing'
+  #       required: true
+  #       default: release
+  #       type: choice
+  #       options:
+  #         - release
+  #         - test
+  #     build_scope:
+  #       description: 'Choose auto to respect changed paths or all to force every image through the flow'
+  #       required: true
+  #       default: all
+  #       type: choice
+  #       options:
+  #         - all
+  #         - auto
 
 permissions:
   contents: write
+  packages: write
   id-token: write
 
 concurrency:
@@ -130,7 +132,7 @@ jobs:
                   'cloudbuild.remote.yaml',
                   'pyproject.toml',
                   '.github/workflows/build-via-cloud-build.yml',
-                  '.github/workflows/republish-helm-chart.yml',
+                  '.github/workflows/validation-cases.yml',
                   '.github/scripts/chart_versioning.py',
               }
               if any(path in shared_all_files for path in changed):
@@ -177,7 +179,7 @@ jobs:
                   'cloudbuild.remote.yaml',
                   'pyproject.toml',
                   '.github/workflows/build-via-cloud-build.yml',
-                  '.github/workflows/republish-helm-chart.yml',
+                  '.github/workflows/validation-cases.yml',
                   '.github/scripts/chart_versioning.py',
               }
               if any(path in shared_all_files for path in changed):
@@ -398,7 +400,7 @@ jobs:
             --config=cloudbuild.remote.yaml \
             --substitutions=_REPO_URL="https://github.com/${GITHUB_REPOSITORY}.git",_REVISION="${GITHUB_SHA}",_SHORT_SHA="${SHORT_SHA}",_GHCR_IMAGE="${GHCR_IMAGE}",_GHCR_USERNAME="${GHCR_USERNAME}",_DOCKERFILE="${DOCKERFILE}",_CONTEXT="${BUILD_CONTEXT}",_GITHUB_REPOSITORY="${GITHUB_REPOSITORY}",_SEMVER_TAG="${IMAGE_VERSION}"
 
-  sync-chart-state:
+  bump-chart-version:
     needs:
       - detect-images
       - resolve-versions
@@ -406,8 +408,6 @@ jobs:
     if: ${{ needs.detect-images.outputs.count != '0' && needs.cloud-build.result == 'success' && (github.event_name != 'workflow_dispatch' || github.event.inputs.run_mode != 'test') }}
     runs-on:
       - self-hosted
-    outputs:
-      chart_version: ${{ needs.resolve-versions.outputs.chart_version }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -432,25 +432,43 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add helm-chart/Chart.yaml helm-chart/values.yaml
-          git commit -m "Update chart defaults for release v${CHART_VERSION}"
+          git commit -m "[skip ci] Update chart defaults for release v${CHART_VERSION}"
           git push origin "HEAD:${TARGET_BRANCH}"
+
+  validate-chart:
+    needs:
+      - detect-images
+      - resolve-versions
+      - cloud-build
+      - bump-chart-version
+    if: ${{ needs.detect-images.outputs.count != '0' && needs.cloud-build.result == 'success' && (github.event_name != 'workflow_dispatch' || github.event.inputs.run_mode != 'test') }}
+    uses: ./.github/workflows/validation-cases.yml
+    with:
+      chart-path: ./helm-chart
+      release-name: job-aggregator
+
+  publish-chart:
+    needs:
+      - detect-images
+      - resolve-versions
+      - bump-chart-version
+      - validate-chart
+    if: ${{ needs.detect-images.outputs.count != '0' && needs.validate-chart.result == 'success' && (github.event_name != 'workflow_dispatch' || github.event.inputs.run_mode != 'test') }}
+    runs-on:
+      - self-hosted
+    outputs:
+      chart_version: ${{ needs.resolve-versions.outputs.chart_version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.ref_name }}
 
       - name: Setup Helm
         uses: azure/setup-helm@v4
 
-      - name: Validate updated default chart render
-        run: helm template job-aggregator ./helm-chart
-
-      - name: Validate updated browser crawler render
-        run: helm template job-aggregator ./helm-chart -f ./helm-chart/examples/browser-crawler.values.yaml
-
-      - name: Validate updated shared PVC override render
-        run: helm template job-aggregator ./helm-chart -f ./helm-chart/examples/existing-shared-pvc.values.yaml
-
-      - name: Validate updated NATS render
-        run: helm template job-aggregator ./helm-chart -f ./helm-chart/examples/nats.values.yaml
-
-      - name: Package updated chart
+      - name: Package chart
         env:
           CHART_VERSION: ${{ needs.resolve-versions.outputs.chart_version }}
         run: |
@@ -458,126 +476,17 @@ jobs:
           helm package ./helm-chart --destination ./.release/packages
           test -f "./.release/packages/job-aggregator-${CHART_VERSION}.tgz"
 
-      - name: Prepare Pages chart repo content
-        env:
-          CHART_VERSION: ${{ needs.resolve-versions.outputs.chart_version }}
-          PAGES_URL: https://lynh7.github.io/job-aggregator
+      - name: Login to GHCR (Helm)
         run: |
-          set -euo pipefail
+          echo ${{ secrets.GITHUB_TOKEN }} | helm registry login ghcr.io \
+            -u ${{ env.GHCR_USERNAME }} --password-stdin
 
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-
-          rm -rf .release/gh-pages .release/pages-site
-          if git ls-remote --exit-code --heads origin gh-pages >/dev/null 2>&1; then
-            git fetch origin gh-pages
-            git worktree add .release/gh-pages origin/gh-pages
-            (
-              cd .release/gh-pages
-              git checkout -B gh-pages origin/gh-pages
-            )
-          else
-            git worktree add --detach .release/gh-pages
-            (
-              cd .release/gh-pages
-              git checkout --orphan gh-pages
-              find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
-            )
-          fi
-
-          mkdir -p .release/pages-site
-          cp -R ./.release/gh-pages/. ./.release/pages-site/ 2>/dev/null || true
-          cp ./.release/packages/*.tgz ./.release/pages-site/
-          touch ./.release/pages-site/.nojekyll
-          helm repo index ./.release/pages-site --url "${PAGES_URL}"
-
-      - name: Persist Pages source branch snapshot
+      - name: Push chart to GHCR (OCI)
         env:
           CHART_VERSION: ${{ needs.resolve-versions.outputs.chart_version }}
         run: |
-          set -euo pipefail
-
-          (
-            cd .release/gh-pages
-            rm -rf ./*
-            rm -f .nojekyll index.yaml
-            cp -R ../pages-site/. .
-            git add .
-            if git diff --cached --quiet; then
-              echo "No chart repository changes to publish."
-              exit 0
-            fi
-            git commit -m "Snapshot Helm chart site v${CHART_VERSION}"
-            git push origin gh-pages
-          )
-
-      - name: Configure GitHub Pages
-        uses: actions/configure-pages@v5
-
-      - name: Upload GitHub Pages artifact
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: ./.release/pages-site
-
-  deploy-pages:
-    needs:
-      - sync-chart-state
-    if: ${{ needs.sync-chart-state.result == 'success' }}
-    runs-on:
-      - self-hosted
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - name: Deploy GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
-
-  test-release-flow:
-    needs:
-      - detect-images
-      - resolve-versions
-    if: ${{ needs.detect-images.outputs.count != '0' && github.event_name == 'workflow_dispatch' && github.event.inputs.run_mode == 'test' }}
-    runs-on:
-      - self-hosted
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Helm
-        uses: azure/setup-helm@v4
-
-      - name: Simulate chart update
-        env:
-          BUILD_MATRIX: ${{ needs.resolve-versions.outputs.matrix }}
-          CHART_VERSION: ${{ needs.resolve-versions.outputs.chart_version }}
-        run: |
-          cp -R helm-chart /tmp/job-aggregator-test-chart
-          python3 .github/scripts/chart_versioning.py apply-release-state \
-            --matrix-json "${BUILD_MATRIX}" \
-            --chart-version "${CHART_VERSION}" \
-            --values-file /tmp/job-aggregator-test-chart/values.yaml \
-            --chart-file /tmp/job-aggregator-test-chart/Chart.yaml
-
-      - name: Validate simulated default chart render
-        run: helm template job-aggregator /tmp/job-aggregator-test-chart
-
-      - name: Validate simulated browser crawler render
-        run: helm template job-aggregator /tmp/job-aggregator-test-chart -f /tmp/job-aggregator-test-chart/examples/browser-crawler.values.yaml
-
-      - name: Validate simulated shared PVC override render
-        run: helm template job-aggregator /tmp/job-aggregator-test-chart -f /tmp/job-aggregator-test-chart/examples/existing-shared-pvc.values.yaml
-
-      - name: Validate simulated NATS render
-        run: helm template job-aggregator /tmp/job-aggregator-test-chart -f /tmp/job-aggregator-test-chart/examples/nats.values.yaml
-
-      - name: Package simulated chart
-        env:
-          CHART_VERSION: ${{ needs.resolve-versions.outputs.chart_version }}
-        run: |
-          mkdir -p /tmp/job-aggregator-test-packages
-          helm package /tmp/job-aggregator-test-chart --destination /tmp/job-aggregator-test-packages
-          test -f "/tmp/job-aggregator-test-packages/job-aggregator-${CHART_VERSION}.tgz"
+          helm push "./.release/packages/job-aggregator-${CHART_VERSION}.tgz" \
+            oci://ghcr.io/${{ github.repository_owner }}
 
   no-op:
     needs:
