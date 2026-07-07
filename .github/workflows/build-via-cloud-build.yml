@@ -236,6 +236,7 @@ jobs:
         run: |
           echo "Image count: ${{ steps.detect.outputs.count }}"
           echo "Images: ${{ steps.detect.outputs.names }}"
+  
   resolve-versions:
     needs:
       - detect-images

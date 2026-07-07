@@ -36,6 +36,9 @@ jobs:
           - name: nats
             values_file: examples/nats.values.yaml
     steps:
+      - name: Setup Helm
+        uses: azure/setup-helm@v4
+
       - name: Install kubeconform
         if: ${{ inputs.use-kubeconform }}
         run: |
