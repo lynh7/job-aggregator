@@ -26,6 +26,10 @@ response, applying versioned business rules, and exporting JSON/XLSX files.
 - `crawler_service/`: crawler-only code
 - `candidate_service/`: candidate API and worker code
 
+All service images must include `shared/` in their build context because each
+runtime imports config, database, models, schemas, or logging from
+`shared.*`.
+
 ## Architecture
 
 ```text

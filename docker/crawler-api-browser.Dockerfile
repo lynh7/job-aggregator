@@ -8,6 +8,7 @@ COPY pyproject.toml README.md ./
 COPY app ./app
 COPY candidate_service ./candidate_service
 COPY crawler_service ./crawler_service
+COPY shared ./shared
 RUN pip install --no-cache-dir '.[crawler-browser]'     && python -m playwright install --with-deps chromium
 
 EXPOSE 8200
