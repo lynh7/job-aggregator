@@ -169,16 +169,24 @@ Logging:
 
 Primary image CI/CD path:
 
-- GitHub Actions triggers on `push` to `main` and `workflow_dispatch` only.
-- The workflow runs on a private self-hosted runner labeled `self-hosted,raspberry-pi`.
+- GitHub Actions triggers on `push` to `main` for selected repo paths.
+- The checked-in `workflow_dispatch` block in `.github/workflows/build-via-cloud-build.yml` is currently disabled.
+- The workflow runs on a private self-hosted runner.
 - The Raspberry Pi runner authenticates to Google Cloud and runs `gcloud builds submit`.
 - Docker builds happen in Google Cloud Build, not on the Raspberry Pi.
 - Cloud Build logs in to GHCR with the `ghcr-token` secret from Google Secret Manager.
-- The default build target in this repo is `docker/job-api.Dockerfile` -> `ghcr.io/trthienan17/my-app:${GITHUB_SHA}` and `ghcr.io/trthienan17/my-app:latest`.
+- The workflow builds only the images selected by changed-path detection:
+  - `app/**` -> `job-api`
+  - `shared/**` -> all images
+  - `candidate_service/**` -> `candidate-api`, `candidate-worker`
+  - `crawler_service/**` -> `crawler-api`, `crawler-api-browser`
+- Edits to workflow YAML files do not force image rebuilds by themselves. Use the validation workflow path when testing CI logic changes.
 
 Files:
 
 - workflow: `.github/workflows/build-via-cloud-build.yml`
+- validation workflow: `.github/workflows/validation-cases.yml`
+- manual chart republish fallback: `.github/workflows/republish-helm-chart.yml`
 - build config: `cloudbuild.remote.yaml`
 - GCP bootstrap Terraform: `deploy/terraform/gcp-cloud-build-runner/`
 - Pi runner compose service: `/home/andy/repositories/home-docker-compose/services/github-actions-runner.yml`
@@ -202,6 +210,7 @@ Security constraints implemented:
 - no public inbound port on the Raspberry Pi runner
 - no Docker image build on the Raspberry Pi runner
 - Image builds update only the service tags that were rebuilt, and the Helm chart release packages those committed defaults without rewriting them
+- Workflow-file edits do not automatically burn Cloud Build minutes by rebuilding every image
 
 Legacy local build agent:
 
@@ -249,9 +258,9 @@ Database wiring behavior:
 
 If your cluster injects runtime configuration from an existing Secret, set `global.envFrom` or use `helm-chart/examples/existing-secret.values.yaml`. The chart no longer assumes a `job-aggregator-env` Secret exists by default.
 
-Chart releases are published directly from `.github/workflows/build-via-cloud-build.yml` after successful image builds and chart-state sync. The workflow packages the chart exactly as committed, including the per-service image tags already written to `helm-chart/values.yaml`, uploads that site content as a GitHub Pages artifact, and deploys it with the GitHub Actions Pages flow.
+Chart releases are published directly from `.github/workflows/build-via-cloud-build.yml` after successful image builds, chart-state sync, and reusable validation checks. The workflow packages the chart exactly as committed, including the per-service image tags already written to `helm-chart/values.yaml`, then pushes the chart package to GHCR as an OCI artifact.
 
-The workflow also snapshots the generated chart site into `gh-pages` so the next publish can reuse the existing chart packages and index state. `.github/workflows/republish-helm-chart.yml` remains available as a manual fallback if you need to redeploy the current chart state without rebuilding images.
+`.github/workflows/republish-helm-chart.yml` remains available as a manual fallback if you need to republish the current chart state without rebuilding images.
 
 - `helm-chart/Chart.yaml` `version`
 - `helm-chart/Chart.yaml` `appVersion`

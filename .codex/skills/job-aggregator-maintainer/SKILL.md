@@ -33,6 +33,7 @@ deployment packaging, or operational behavior.
 - Target PostgreSQL-compatible production behavior, not SQLite assumptions.
 - When topology or build flow changes, update Dockerfiles, `helm-chart/`, CI workflows, README, and this skill together.
 - The preferred image build path is GitHub Actions on a private self-hosted Raspberry Pi runner submitting to Google Cloud Build.
+- The main build workflow currently triggers on `push` to `main` for selected paths; the checked-in `workflow_dispatch` block is disabled.
 - Push service images separately:
   - `ghcr.io/lynh7/job-aggregator-job-api`
   - `ghcr.io/lynh7/job-aggregator-candidate-api`
@@ -43,6 +44,7 @@ deployment packaging, or operational behavior.
 - Image versions are tracked per service in `helm-chart/values.yaml`.
 - CI only bumps the patch digit for services that were actually rebuilt and commits those new default image tags back to `main`.
 - Chart versioning is independent from service image versions; the Helm chart patch can advance even when only one service image tag changes.
+- Workflow YAML edits should not force image rebuilds on their own; validate CI logic through the workflow/reusable-workflow path instead of spending Cloud Build minutes unnecessarily.
 - Use immutable Git SHA image tags in Kubernetes-facing examples and environment values; `latest` is convenience only.
 
 ## Common tasks
@@ -125,7 +127,7 @@ helm template job-aggregator ./helm-chart -f ./helm-chart/examples/nats.values.y
   - `docker/candidate-api.Dockerfile`
   - `docker/candidate-worker.Dockerfile`
 - Keep service-specific image names, immutable tags, and ports aligned across Cloud Build and Helm values.
-- Keep Helm release automation aligned with the image build workflow. The build workflow commits updated per-service image tags and the next chart patch version into `helm-chart/`, then validates, packages, snapshots the generated site into `gh-pages`, and deploys that same chart site through the GitHub Actions Pages artifact flow in the same workflow run.
+- Keep Helm release automation aligned with the image build workflow. The build workflow commits updated per-service image tags and the next chart patch version into `helm-chart/`, runs the reusable chart validation workflow, packages the chart, and pushes that chart package to GHCR as an OCI artifact in the same workflow run.
 - Treat `/app/data` storage, PostgreSQL wiring, and ingest token wiring as deployment contract.
 
 ## Validation expectations
