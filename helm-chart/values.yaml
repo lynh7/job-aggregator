@@ -220,7 +220,7 @@ uiWeb:
   replicaCount: 2
   image:
     repository: ghcr.io/lynh7/job-aggregator-ui-web
-    tag: "0.1.0"
+    tag: "0.1.1"
     pullPolicy: ""
   command: []
   args: []
