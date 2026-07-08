@@ -11,6 +11,7 @@ deployment packaging, or operational behavior.
 ## Repo map
 
 - `app/`: core job API, ingest endpoint, raw job persistence, master-data projection, business rules.
+- `shared/`: shared runtime modules such as config, database, models, schemas, and logging.
 - `crawler_service/`: crawl4ai-backed crawler API for TopCV, ITViec, and future site adapters.
 - `candidate_service/`: CV intake API, parsing, matching, task queue worker.
 - `docker/`: service-specific Dockerfiles.
@@ -21,6 +22,7 @@ deployment packaging, or operational behavior.
 ## Runtime rules
 
 - Keep `raw_jobs.payload` unchanged. Provider interpretation belongs in `app/business_rules/`.
+- Keep cross-service runtime code in `shared/`, not in `app/`.
 - The crawler is a separate service. It should crawl source pages and send raw records to `POST /api/v1/ingest/raw-jobs` on the core API.
 - The crawler backend is deployment-selectable: lightweight `http` or browser `crawl4ai`.
 - Keep the core API authoritative for normalization, master-data persistence, and JSON/XLSX export generation.
@@ -31,6 +33,7 @@ deployment packaging, or operational behavior.
 - Target PostgreSQL-compatible production behavior, not SQLite assumptions.
 - When topology or build flow changes, update Dockerfiles, `helm-chart/`, CI workflows, README, and this skill together.
 - The preferred image build path is GitHub Actions on a private self-hosted Raspberry Pi runner submitting to Google Cloud Build.
+- The main build workflow currently triggers on `push` to `main` for selected paths; the checked-in `workflow_dispatch` block is disabled.
 - Push service images separately:
   - `ghcr.io/lynh7/job-aggregator-job-api`
   - `ghcr.io/lynh7/job-aggregator-candidate-api`
@@ -38,8 +41,10 @@ deployment packaging, or operational behavior.
   - `ghcr.io/lynh7/job-aggregator-crawler-api`
   - `ghcr.io/lynh7/job-aggregator-crawler-api-browser`
 - GHCR package visibility is managed separately from repo visibility. A public GitHub repo can still publish private GHCR packages unless each package is explicitly made public or pulled with auth.
-- Version source of truth is repo git tags starting at `v0.1.0`. CI only bumps the patch digit and applies the same new version to every image built in that workflow run.
-- Selective builds share one repo version, so unchanged images may not exist for every later patch tag.
+- Image versions are tracked per service in `helm-chart/values.yaml`.
+- CI only bumps the patch digit for services that were actually rebuilt and commits those new default image tags back to `main`.
+- Chart versioning is independent from service image versions; the Helm chart patch can advance even when only one service image tag changes.
+- Workflow YAML edits should not force image rebuilds on their own; validate CI logic through the workflow/reusable-workflow path instead of spending Cloud Build minutes unnecessarily.
 - Use immutable Git SHA image tags in Kubernetes-facing examples and environment values; `latest` is convenience only.
 
 ## Common tasks
@@ -75,7 +80,7 @@ make build-crawler-api-browser
 
 ```bash
 sed -n '1,260p' .github/workflows/build-via-cloud-build.yml
-sed -n '1,260p' .github/workflows/release-helm-chart.yml
+sed -n '1,260p' .github/workflows/republish-helm-chart.yml
 sed -n '1,220p' cloudbuild.remote.yaml
 find deploy/terraform/gcp-cloud-build-runner -maxdepth 2 -type f
 ```
@@ -122,7 +127,7 @@ helm template job-aggregator ./helm-chart -f ./helm-chart/examples/nats.values.y
   - `docker/candidate-api.Dockerfile`
   - `docker/candidate-worker.Dockerfile`
 - Keep service-specific image names, immutable tags, and ports aligned across Cloud Build and Helm values.
-- Keep Helm release automation aligned with the image build workflow. The chart release now runs from `workflow_run` after `build-via-cloud-build` succeeds and discovers the new semver tag from that run's head SHA.
+- Keep Helm release automation aligned with the image build workflow. The build workflow commits updated per-service image tags and the next chart patch version into `helm-chart/`, runs the reusable chart validation workflow, packages the chart, and pushes that chart package to GHCR as an OCI artifact in the same workflow run.
 - Treat `/app/data` storage, PostgreSQL wiring, and ingest token wiring as deployment contract.
 
 ## Validation expectations

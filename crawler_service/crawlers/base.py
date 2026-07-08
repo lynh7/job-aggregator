@@ -6,8 +6,8 @@ from urllib.parse import urlsplit, urlunsplit
 
 import httpx
 
-from app.schemas import RawJobRecord
 from crawler_service.config import CrawlerSettings
+from shared.schemas import RawJobRecord
 
 
 class JobCrawler(ABC):

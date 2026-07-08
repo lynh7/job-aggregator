@@ -53,8 +53,9 @@ app.kubernetes.io/component: {{ .name }}
 {{- end -}}
 
 {{- define "job-aggregator.componentImage" -}}
-{{- $tag := .component.image.tag | default .root.Values.global.imageTag -}}
-{{- printf "%s:%s" .component.image.repository $tag -}}
+{{- $repository := required "component image repository is required" .component.image.repository -}}
+{{- $tag := required "component image tag is required" .component.image.tag -}}
+{{- printf "%s:%s" $repository $tag -}}
 {{- end -}}
 
 {{- define "job-aggregator.renderEnv" -}}
@@ -74,7 +75,7 @@ app.kubernetes.io/component: {{ .name }}
 {{- if and .Values.database.connection.enabled .Values.database.connection.secretName }}
 {{- toYaml (list (dict "name" "DATABASE_URL" "valueFrom" (dict "secretKeyRef" (dict "name" .Values.database.connection.secretName "key" .Values.database.connection.secretKey)))) -}}
 {{- else -}}
-[]
+{{- toYaml (list (dict "name" "DATABASE_URL" "value" (printf "sqlite:///%s/jobs.db" .Values.sharedData.mountPath))) -}}
 {{- end -}}
 {{- end -}}
 

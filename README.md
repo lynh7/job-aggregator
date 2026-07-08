@@ -20,6 +20,17 @@ response, applying versioned business rules, and exporting JSON/XLSX files.
 - `helm-chart/` for the recommended Kubernetes deployment topology
 - Docker-ready
 
+## Code Layout
+
+- `app/`: job API-only code
+- `shared/`: shared runtime modules used across services
+- `crawler_service/`: crawler-only code
+- `candidate_service/`: candidate API and worker code
+
+All service images must include `shared/` in their build context because each
+runtime imports config, database, models, schemas, or logging from
+`shared.*`.
+
 ## Architecture
 
 ```text
@@ -134,26 +145,53 @@ It runs as a separate API pod and a separate worker deployment.
 Endpoints:
 
 - `POST http://localhost:8100/api/v1/candidates` with multipart file upload
+- `POST http://localhost:8100/api/v1/candidates/{id}/job-searches`
 - `GET http://localhost:8100/api/v1/candidates`
 - `GET http://localhost:8100/api/v1/candidates/{id}`
 - `GET http://localhost:8100/api/v1/candidates/{id}/matches`
 - `POST http://localhost:8100/api/v1/candidates/{id}/rematch`
 - `GET http://localhost:8100/api/v1/tasks`
 
+Candidate job-search automation:
+
+- Candidates can store a keyword list for recurring crawl automation.
+- The worker scheduler is enabled by default with `CANDIDATE_CRAWL_SCHEDULER_ENABLED=true`.
+- The worker enqueues a crawl task every `CANDIDATE_CRAWL_INTERVAL_HOURS` and defaults to 6 hours.
+- Set `CANDIDATE_CRAWL_SCHEDULER_ENABLED=false` to turn the recurring scheduler off entirely.
+- Change `CANDIDATE_CRAWL_INTERVAL_HOURS` to retime the default schedule without code changes.
+- Successful crawl tasks trigger a rematch so fresh jobs appear in candidate matches.
+- Duplicate raw records are filtered before ingest, and database uniqueness on `raw_jobs` and `jobs` still prevents repeated rows.
+
+Candidate submission now also accepts optional `job_keywords` as a comma-separated multipart field if you want to create the first recurring search at upload time.
+
+Logging:
+
+- Shared structured logging is configured across `job-api`, `crawler-api`, `candidate-api`, and `candidate-worker`.
+- Request logs include request ID, method, path, status code, and duration.
+- Background logs include candidate IDs, task IDs, providers, fetched counts, stored counts, and duplicate-filter counts at the appropriate `INFO`/`WARNING` levels.
+
 ## Docker images
 
 Primary image CI/CD path:
 
-- GitHub Actions triggers on `push` to `main` and `workflow_dispatch` only.
-- The workflow runs on a private self-hosted runner labeled `self-hosted,raspberry-pi`.
+- GitHub Actions triggers on `push` to `main` for selected repo paths.
+- The checked-in `workflow_dispatch` block in `.github/workflows/build-via-cloud-build.yml` is currently disabled.
+- The workflow runs on a private self-hosted runner.
 - The Raspberry Pi runner authenticates to Google Cloud and runs `gcloud builds submit`.
 - Docker builds happen in Google Cloud Build, not on the Raspberry Pi.
 - Cloud Build logs in to GHCR with the `ghcr-token` secret from Google Secret Manager.
-- The default build target in this repo is `docker/job-api.Dockerfile` -> `ghcr.io/trthienan17/my-app:${GITHUB_SHA}` and `ghcr.io/trthienan17/my-app:latest`.
+- The workflow builds only the images selected by changed-path detection:
+  - `app/**` -> `job-api`
+  - `shared/**` -> all images
+  - `candidate_service/**` -> `candidate-api`, `candidate-worker`
+  - `crawler_service/**` -> `crawler-api`, `crawler-api-browser`
+- Edits to workflow YAML files do not force image rebuilds by themselves. Use the validation workflow path when testing CI logic changes.
 
 Files:
 
 - workflow: `.github/workflows/build-via-cloud-build.yml`
+- validation workflow: `.github/workflows/validation-cases.yml`
+- manual chart republish fallback: `.github/workflows/republish-helm-chart.yml`
 - build config: `cloudbuild.remote.yaml`
 - GCP bootstrap Terraform: `deploy/terraform/gcp-cloud-build-runner/`
 - Pi runner compose service: `/home/andy/repositories/home-docker-compose/services/github-actions-runner.yml`
@@ -176,7 +214,8 @@ Security constraints implemented:
 - no `pull_request` trigger
 - no public inbound port on the Raspberry Pi runner
 - no Docker image build on the Raspberry Pi runner
-- The Helm chart release uses the same repo semver tags as image builds and updates the chart default image tag to that release version
+- Image builds update only the service tags that were rebuilt, and the Helm chart release packages those committed defaults without rewriting them
+- Workflow-file edits do not automatically burn Cloud Build minutes by rebuilding every image
 
 Legacy local build agent:
 
@@ -193,6 +232,7 @@ Legacy local build agent:
 - `candidate-worker` enabled by default at 1 replica
 - `nats` disabled by default because `QUEUE_BACKEND=database` is still the live path
 - shared `/app/data` persistence made explicit through `sharedData`
+- default image tags are pinned per service in `helm-chart/values.yaml`
 
 Render the default chart and the shipped override examples:
 
@@ -206,13 +246,30 @@ helm template job-aggregator ./helm-chart -f ./helm-chart/examples/nats.values.y
 
 Set `crawlerApi.imageVariant=browser` to switch the single `crawler-api` deployment from `ghcr.io/lynh7/job-aggregator-crawler-api` to `ghcr.io/lynh7/job-aggregator-crawler-api-browser`. The default is `lightweight`. When the `browser` variant is selected, the chart also sets `CRAWL_BACKEND=crawl4ai`.
 
+Image versioning behavior:
+
+- `helm-chart/values.yaml` is the source of truth for the chart's default image tags.
+- Each service has its own explicit image tag; there is no shared global image tag fallback.
+- The build workflow bumps only the tags for services it actually rebuilt and commits those updated defaults back to `main`.
+- The chart version is bumped independently, so the chart can move from `0.1.5` to `0.1.6` while service image tags diverge, for example `job-api: 0.1.5` and `crawler-api: 0.1.9`.
+
+Database wiring behavior:
+
+- By default, the chart injects `DATABASE_URL=sqlite:////app/data/jobs.db` for `job-api`, `candidate-api`, and `candidate-worker`.
+- The default SQLite path uses the shared volume mount at `/app/data`.
+- `crawler-api` does not get `DATABASE_URL` because it pushes raw records to `job-api` and does not persist directly.
+- If you want PostgreSQL or Supabase, enable `database.connection.enabled=true` and set `database.connection.secretName` to a Secret containing the connection string at the configured key.
+- `helm-chart/examples/existing-secret.values.yaml` shows the intended secret-backed database configuration.
+
 If your cluster injects runtime configuration from an existing Secret, set `global.envFrom` or use `helm-chart/examples/existing-secret.values.yaml`. The chart no longer assumes a `job-aggregator-env` Secret exists by default.
 
-Chart releases are published from `.github/workflows/release-helm-chart.yml` after `build-via-cloud-build` completes successfully and creates a repo tag like `v0.1.0`. The workflow reuses that semver for:
+Chart releases are published directly from `.github/workflows/build-via-cloud-build.yml` after successful image builds, chart-state sync, and reusable validation checks. The workflow packages the chart exactly as committed, including the per-service image tags already written to `helm-chart/values.yaml`, then pushes the chart package to GHCR as an OCI artifact.
+
+`.github/workflows/republish-helm-chart.yml` remains available as a manual fallback if you need to republish the current chart state without rebuilding images.
 
 - `helm-chart/Chart.yaml` `version`
 - `helm-chart/Chart.yaml` `appVersion`
-- `helm-chart/values.yaml` `global.imageTag`
+- `helm-chart/values.yaml` per-service `image.tag` defaults
 
 Recommended GitOps split:
 

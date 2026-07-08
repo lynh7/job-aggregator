@@ -1,9 +1,13 @@
 import httpx
 
-from app.schemas import IngestRawJobsRequest, RawJobRecord
+from app.services.collector import dedupe_raw_job_records
 from crawler_service.config import CrawlerSettings
 from crawler_service.crawlers.registry import build_crawlers
 from crawler_service.schemas import CrawlRequest, CrawlResponse
+from shared.logging import get_logger
+from shared.schemas import IngestRawJobsRequest, RawJobRecord
+
+logger = get_logger(__name__)
 
 
 async def crawl_jobs(request: CrawlRequest, settings: CrawlerSettings) -> tuple[list[str], list[RawJobRecord]]:
@@ -20,7 +24,17 @@ async def crawl_jobs(request: CrawlRequest, settings: CrawlerSettings) -> tuple[
         if remaining <= 0:
             continue
         records.extend(await crawler.search(request.keywords, request.location, remaining))
-    return requested, records
+    deduped = dedupe_raw_job_records(records)
+    logger.info(
+        "crawler.fetch.completed",
+        providers=requested,
+        keywords=request.keywords,
+        location=request.location,
+        fetched=len(records),
+        unique_records=len(deduped),
+        duplicates_filtered=len(records) - len(deduped),
+    )
+    return requested, deduped
 
 
 async def push_to_core(
@@ -42,4 +56,12 @@ async def push_to_core(
         response.raise_for_status()
     body = response.json()
     body["providers"] = requested
-    return CrawlResponse.model_validate(body)
+    result = CrawlResponse.model_validate(body)
+    logger.info(
+        "crawler.push.completed",
+        providers=requested,
+        fetched=result.fetched,
+        stored=result.stored,
+        duplicates_filtered=result.duplicates_filtered,
+    )
+    return result

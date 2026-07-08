@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - 'app/**'
+      - 'shared/**'
       - 'candidate_service/**'
       - 'crawler_service/**'
       - 'docker/**'
@@ -14,17 +15,39 @@ on:
       - 'cloudbuild.remote.yaml'
       - 'ui-web/**'
       - '.github/workflows/build-via-cloud-build.yml'
-  workflow_dispatch:
+      - '.github/workflows/validation-cases.yml'
+      - '.github/scripts/**'
+  # workflow_dispatch:
+  #   inputs:
+  #     run_mode:
+  #       description: 'Choose release to build/publish or test to validate the flow without publishing'
+  #       required: true
+  #       default: release
+  #       type: choice
+  #       options:
+  #         - release
+  #         - test
+  #     build_scope:
+  #       description: 'Choose auto to respect changed paths or all to force every image through the flow'
+  #       required: true
+  #       default: all
+  #       type: choice
+  #       options:
+  #         - all
+  #         - auto
 
 permissions:
   contents: write
+  packages: write
+  id-token: write
 
 concurrency:
   group: cloud-build-main
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 env:
   GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+  GHCR_USERNAME: ${{ vars.GHCR_USERNAME }}
 
 jobs:
   detect-images:
@@ -39,11 +62,13 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
+ 
       - name: Detect images to build
         id: detect
         env:
           EVENT_NAME: ${{ github.event_name }}
+          RUN_MODE: ${{ github.event.inputs.run_mode }}
+          BUILD_SCOPE: ${{ github.event.inputs.build_scope }}
           BEFORE_SHA: ${{ github.event.before }}
           CURRENT_SHA: ${{ github.sha }}
         run: |
@@ -52,7 +77,7 @@ jobs:
           import os
           import subprocess
           from pathlib import Path
-
+ 
           images = {
               'job-api': {
                   'dockerfile': 'docker/job-api.Dockerfile',
@@ -87,43 +112,53 @@ jobs:
               'crawler-api',
               'crawler-api-browser',
           }
-
+ 
           event_name = os.environ['EVENT_NAME']
+          run_mode = os.environ.get('RUN_MODE', '').strip() or 'release'
+          build_scope = os.environ.get('BUILD_SCOPE', '').strip() or 'all'
           before_sha = os.environ.get('BEFORE_SHA', '').strip()
           current_sha = os.environ['CURRENT_SHA']
-
+ 
           def all_components(reason: str):
               names = list(images)
               print(reason)
               return names
-
-          if event_name == 'workflow_dispatch':
-              selected = all_components('Manual dispatch: build every image.')
-          elif not before_sha or set(before_sha) == {'0'}:
-              selected = all_components('No usable previous SHA: build every image.')
-          else:
+ 
+          if event_name == 'workflow_dispatch' and build_scope == 'all':
+              selected = all_components(
+                  f"Manual dispatch ({run_mode}): force every image through the flow."
+              )
+          elif event_name == 'workflow_dispatch' and build_scope == 'auto':
+              print(f"Manual dispatch ({run_mode}): using changed-path detection.")
               diff = subprocess.check_output(
-                  ['git', 'diff', '--name-only', f'{before_sha}..{current_sha}'],
+                  ['git', 'diff', '--name-only', 'HEAD^..HEAD'],
                   text=True,
               )
               changed = [line.strip() for line in diff.splitlines() if line.strip()]
               print('Changed files:')
               for path in changed:
                   print(f'  - {path}')
-
+ 
               selected = set()
+              # Build-logic files only. Workflow YAML files
+              # (build-via-cloud-build.yml, validation-cases.yml) are
+              # deliberately NOT included: editing the pipeline itself
+              # should not force a rebuild of every image. Use
+              # workflow_dispatch (run_mode=test) to validate those.
               shared_all_files = {
                   '.dockerignore',
                   'cloudbuild.remote.yaml',
                   'pyproject.toml',
-                  '.github/workflows/build-via-cloud-build.yml',
+                  '.github/scripts/chart_versioning.py',
               }
               if any(path in shared_all_files for path in changed):
                   selected = set(images)
               else:
                   for path in changed:
                       if path.startswith('app/'):
-                          selected.update(backend_images)
+                          selected.add('job-api')
+                      if path.startswith('shared/'):
+                          selected.update(images)
                       if path == 'docker/job-api.Dockerfile':
                           selected.add('job-api')
                       if path.startswith('candidate_service/') or path in {
@@ -136,6 +171,57 @@ jobs:
                           'docker/crawler-api-browser.Dockerfile',
                       }:
                           selected.update({'crawler-api', 'crawler-api-browser'})
+ 
+              selected = sorted(selected)
+              if selected:
+                  print('Selected images: ' + ', '.join(selected))
+              else:
+                  print('No image-producing paths changed.')
+          elif not before_sha or set(before_sha) == {'0'}:
+              selected = all_components('No usable previous SHA: build every image.')
+          else:
+              diff = subprocess.check_output(
+                  ['git', 'diff', '--name-only', f'{before_sha}..{current_sha}'],
+                  text=True,
+              )
+              changed = [line.strip() for line in diff.splitlines() if line.strip()]
+              print('Changed files:')
+              for path in changed:
+                  print(f'  - {path}')
+ 
+              selected = set()
+              # Build-logic files only. Workflow YAML files
+              # (build-via-cloud-build.yml, validation-cases.yml) are
+              # deliberately NOT included: editing the pipeline itself
+              # should not force a rebuild of every image. Use
+              # workflow_dispatch (run_mode=test) to validate those.
+              shared_all_files = {
+                  '.dockerignore',
+                  'cloudbuild.remote.yaml',
+                  'pyproject.toml',
+                  '.github/scripts/chart_versioning.py',
+              }
+              if any(path in shared_all_files for path in changed):
+                  selected = set(images)
+              else:
+                  for path in changed:
+                      if path.startswith('app/'):
+                          selected.add('job-api')
+                      if path.startswith('shared/'):
+                          selected.update(images)
+                      if path == 'docker/job-api.Dockerfile':
+                          selected.add('job-api')
+                      if path.startswith('candidate_service/') or path in {
+                          'docker/candidate-api.Dockerfile',
+                          'docker/candidate-worker.Dockerfile',
+                      }:
+                          selected.update({'candidate-api', 'candidate-worker'})
+                      if path.startswith('crawler_service/') or path in {
+                          'docker/crawler-api.Dockerfile',
+                          'docker/crawler-api-browser.Dockerfile',
+                      }:
+                          selected.update({'crawler-api', 'crawler-api-browser'})
+ 
                       if path.startswith('ui-web/') or path.startswith('docker/ui-web'):
                           selected.add('ui-web')
 
@@ -144,7 +230,7 @@ jobs:
                   print('Selected images: ' + ', '.join(selected))
               else:
                   print('No image-producing paths changed.')
-
+ 
           matrix = [
               {
                   'name': name,
@@ -154,88 +240,67 @@ jobs:
               }
               for name in selected
           ]
-
+ 
           output = Path(os.environ['GITHUB_OUTPUT'])
           with output.open('a', encoding='utf-8') as fh:
               fh.write(f"matrix={json.dumps(matrix, separators=(',', ':'))}\n")
               fh.write(f"count={len(matrix)}\n")
               fh.write(f"names={','.join(item['name'] for item in matrix)}\n")
           PY
-
+ 
       - name: Show build selection
         run: |
           echo "Image count: ${{ steps.detect.outputs.count }}"
           echo "Images: ${{ steps.detect.outputs.names }}"
-
-  resolve-version:
+  
+  resolve-versions:
     needs:
       - detect-images
     if: ${{ needs.detect-images.outputs.count != '0' }}
     runs-on:
       - self-hosted
     outputs:
-      git_tag: ${{ steps.version.outputs.git_tag }}
-      semver: ${{ steps.version.outputs.semver }}
+      matrix: ${{ steps.plan.outputs.matrix }}
+      chart_version: ${{ steps.plan.outputs.chart_version }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Fetch tags
-        run: git fetch --tags --force
-
-      - name: Resolve next patch version
-        id: version
+      - name: Plan image and chart versions
+        id: plan
+        env:
+          DETECTED_MATRIX: ${{ needs.detect-images.outputs.matrix }}
         run: |
+          export PLAN_JSON
+          PLAN_JSON="$(python3 .github/scripts/chart_versioning.py plan-build --matrix-json "${DETECTED_MATRIX}")"
+          echo "Planned release state: ${PLAN_JSON}"
           python3 - <<'PY'
-          import re
-          import subprocess
-          from pathlib import Path
+          import json
           import os
+          from pathlib import Path
 
-          tags = subprocess.check_output(
-              ['git', 'tag', '--list', 'v*', '--sort=version:refname'],
-              text=True,
-          ).splitlines()
-          tags = [tag.strip() for tag in tags if tag.strip()]
-          latest = tags[-1] if tags else None
-
-          if latest is None:
-              next_tag = 'v0.1.0'
-          else:
-              match = re.fullmatch(r'v(\d+)\.(\d+)\.(\d+)', latest)
-              if not match:
-                  raise RuntimeError(f'Latest version tag has unexpected format: {latest!r}')
-              major, minor, patch = map(int, match.groups())
-              next_tag = f'v{major}.{minor}.{patch + 1}'
-
-          semver = next_tag.removeprefix('v')
-          print(f'Latest version tag: {latest or "<none>"}')
-          print(f'Next version tag: {next_tag}')
-
-          output = Path(os.environ['GITHUB_OUTPUT'])
-          with output.open('a', encoding='utf-8') as fh:
-              fh.write(f'git_tag={next_tag}\n')
-              fh.write(f'semver={semver}\n')
+          payload = json.loads(os.environ["PLAN_JSON"])
+          output = Path(os.environ["GITHUB_OUTPUT"])
+          with output.open("a", encoding="utf-8") as fh:
+              fh.write(f"matrix={json.dumps(payload['matrix'], separators=(',', ':'))}\n")
+              fh.write(f"chart_version={payload['chart_version']}\n")
           PY
+        shell: bash
 
   cloud-build:
     needs:
       - detect-images
-      - resolve-version
-    if: ${{ needs.detect-images.outputs.count != '0' }}
+      - resolve-versions
+    if: ${{ needs.detect-images.outputs.count != '0' && (github.event_name != 'workflow_dispatch' || github.event.inputs.run_mode != 'test') }}
     runs-on:
       - self-hosted
     timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
-        include: ${{ fromJson(needs.detect-images.outputs.matrix) }}
-    env:
-      GHCR_USERNAME: trthienan17
-      VERSION_TAG: ${{ needs.resolve-version.outputs.git_tag }}
-      VERSION_SEMVER: ${{ needs.resolve-version.outputs.semver }}
+        include: ${{ fromJson(needs.resolve-versions.outputs.matrix) }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -338,10 +403,11 @@ jobs:
           GHCR_IMAGE: ${{ matrix.image }}
           DOCKERFILE: ${{ matrix.dockerfile }}
           BUILD_CONTEXT: ${{ matrix.context }}
+          IMAGE_VERSION: ${{ matrix.version }}
         run: |
-          echo "Submitting Cloud Build for ${GHCR_IMAGE}:${VERSION_SEMVER}"
+          echo "Submitting Cloud Build for ${GHCR_IMAGE}:${IMAGE_VERSION}"
           echo "Component: ${{ matrix.name }}"
-          echo "Version tag: ${VERSION_TAG}"
+          echo "Version tag: ${IMAGE_VERSION}"
 
           PROJECT_ID="$(gcloud projects describe "${GCP_PROJECT_ID}" --format='value(projectId)')"
           SHORT_SHA="${GITHUB_SHA::7}"
@@ -354,14 +420,14 @@ jobs:
             --project="${PROJECT_ID}" \
             --no-source \
             --config=cloudbuild.remote.yaml \
-            --substitutions=_REPO_URL="https://github.com/${GITHUB_REPOSITORY}.git",_REVISION="${GITHUB_SHA}",_SHORT_SHA="${SHORT_SHA}",_GHCR_IMAGE="${GHCR_IMAGE}",_GHCR_USERNAME="${GHCR_USERNAME}",_DOCKERFILE="${DOCKERFILE}",_CONTEXT="${BUILD_CONTEXT}",_GITHUB_REPOSITORY="${GITHUB_REPOSITORY}",_SEMVER_TAG="${VERSION_SEMVER}"
+            --substitutions=_REPO_URL="https://github.com/${GITHUB_REPOSITORY}.git",_REVISION="${GITHUB_SHA}",_SHORT_SHA="${SHORT_SHA}",_GHCR_IMAGE="${GHCR_IMAGE}",_GHCR_USERNAME="${GHCR_USERNAME}",_DOCKERFILE="${DOCKERFILE}",_CONTEXT="${BUILD_CONTEXT}",_GITHUB_REPOSITORY="${GITHUB_REPOSITORY}",_SEMVER_TAG="${IMAGE_VERSION}"
 
-  create-version-tag:
+  bump-chart-version:
     needs:
       - detect-images
-      - resolve-version
+      - resolve-versions
       - cloud-build
-    if: ${{ needs.detect-images.outputs.count != '0' && needs.cloud-build.result == 'success' }}
+    if: ${{ needs.detect-images.outputs.count != '0' && needs.cloud-build.result == 'success' && (github.event_name != 'workflow_dispatch' || github.event.inputs.run_mode != 'test') }}
     runs-on:
       - self-hosted
     steps:
@@ -370,27 +436,79 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Fetch tags
-        run: git fetch --tags --force
-
-      - name: Create repository tag
+      - name: Apply chart image tags and chart version
         env:
-          VERSION_TAG: ${{ needs.resolve-version.outputs.git_tag }}
+          BUILD_MATRIX: ${{ needs.resolve-versions.outputs.matrix }}
+          CHART_VERSION: ${{ needs.resolve-versions.outputs.chart_version }}
+          TARGET_BRANCH: ${{ github.ref_name }}
         run: |
-          if git rev-parse -q --verify "refs/tags/${VERSION_TAG}" >/dev/null; then
-            echo "Tag ${VERSION_TAG} already exists locally; skipping create."
-            exit 0
-          fi
+          python3 .github/scripts/chart_versioning.py apply-release-state \
+            --matrix-json "${BUILD_MATRIX}" \
+            --chart-version "${CHART_VERSION}"
 
-          if git ls-remote --tags origin "refs/tags/${VERSION_TAG}" | grep -q "${VERSION_TAG}$"; then
-            echo "Tag ${VERSION_TAG} already exists on origin; skipping create."
+          if git diff --quiet -- helm-chart/Chart.yaml helm-chart/values.yaml; then
+            echo "Chart files already up to date."
             exit 0
           fi
 
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git tag "${VERSION_TAG}" "${GITHUB_SHA}"
-          git push origin "${VERSION_TAG}"
+          git add helm-chart/Chart.yaml helm-chart/values.yaml
+          git commit -m "[skip ci] Update chart defaults for release v${CHART_VERSION}"
+          git push origin "HEAD:${TARGET_BRANCH}"
+
+  validate-chart:
+    needs:
+      - detect-images
+      - resolve-versions
+      - cloud-build
+      - bump-chart-version
+    if: ${{ needs.detect-images.outputs.count != '0' && needs.cloud-build.result == 'success' && (github.event_name != 'workflow_dispatch' || github.event.inputs.run_mode != 'test') }}
+    uses: ./.github/workflows/validation-cases.yml
+    with:
+      chart-path: ./helm-chart
+      release-name: job-aggregator
+
+  publish-chart:
+    needs:
+      - detect-images
+      - resolve-versions
+      - bump-chart-version
+      - validate-chart
+    if: ${{ needs.detect-images.outputs.count != '0' && needs.validate-chart.result == 'success' && (github.event_name != 'workflow_dispatch' || github.event.inputs.run_mode != 'test') }}
+    runs-on:
+      - self-hosted
+    outputs:
+      chart_version: ${{ needs.resolve-versions.outputs.chart_version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.ref_name }}
+
+      - name: Setup Helm
+        uses: azure/setup-helm@v4
+
+      - name: Package chart
+        env:
+          CHART_VERSION: ${{ needs.resolve-versions.outputs.chart_version }}
+        run: |
+          mkdir -p .release/packages
+          helm package ./helm-chart --destination ./.release/packages
+          test -f "./.release/packages/job-aggregator-${CHART_VERSION}.tgz"
+
+      - name: Login to GHCR (Helm)
+        run: |
+          echo ${{ secrets.GITHUB_TOKEN }} | helm registry login ghcr.io \
+            -u ${{ env.GHCR_USERNAME }} --password-stdin
+
+      - name: Push chart to GHCR (OCI)
+        env:
+          CHART_VERSION: ${{ needs.resolve-versions.outputs.chart_version }}
+        run: |
+          helm push "./.release/packages/job-aggregator-${CHART_VERSION}.tgz" \
+            oci://ghcr.io/${{ github.repository_owner }}
 
   no-op:
     needs:

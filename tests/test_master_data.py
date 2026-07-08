@@ -4,9 +4,9 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.business_rules.registry import build_business_rules_registry
-from app.database import Base
-from app.models import Job
-from app.schemas import RawJobRecord
+from shared.database import Base
+from shared.models import Job
+from shared.schemas import RawJobRecord
 from app.services.collector import apply_business_rules, store_master_jobs, store_raw_jobs
 
 

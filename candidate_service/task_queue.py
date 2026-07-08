@@ -3,7 +3,11 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import Select, select
 from sqlalchemy.orm import Session
 
-from app.models import CandidateTask
+from shared.logging import get_logger
+from shared.models import CandidateTask
+
+logger = get_logger(__name__)
+
 
 def enqueue_candidate_task(
     session: Session,
@@ -24,6 +28,13 @@ def enqueue_candidate_task(
     session.add(task)
     session.commit()
     session.refresh(task)
+    logger.info(
+        "task.queued",
+        task_id=task.id,
+        task_type=task.task_type,
+        candidate_id=task.candidate_id,
+        available_at=task.available_at.isoformat(),
+    )
     return task
 
 
@@ -48,6 +59,14 @@ def claim_candidate_task(session: Session, *, worker_id: str) -> CandidateTask |
     task.attempts += 1
     session.commit()
     session.refresh(task)
+    logger.info(
+        "task.claimed",
+        task_id=task.id,
+        task_type=task.task_type,
+        candidate_id=task.candidate_id,
+        worker_id=worker_id,
+        attempts=task.attempts,
+    )
     return task
 
 
@@ -57,6 +76,7 @@ def complete_candidate_task(session: Session, task: CandidateTask) -> None:
     task.locked_at = None
     task.last_error = None
     session.commit()
+    logger.info("task.completed", task_id=task.id, task_type=task.task_type, candidate_id=task.candidate_id)
 
 
 def fail_candidate_task(session: Session, task: CandidateTask, error: str) -> None:
@@ -69,4 +89,12 @@ def fail_candidate_task(session: Session, task: CandidateTask, error: str) -> No
         task.status = "pending"
         task.available_at = datetime.now(UTC) + timedelta(seconds=min(task.attempts * 10, 60))
     session.commit()
-
+    logger.warning(
+        "task.failed",
+        task_id=task.id,
+        task_type=task.task_type,
+        candidate_id=task.candidate_id,
+        attempts=task.attempts,
+        status=task.status,
+        error=task.last_error,
+    )

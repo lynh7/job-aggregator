@@ -1,0 +1,135 @@
+name: Republish Helm Chart
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: republish-helm-chart
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on:
+      - self-hosted
+    outputs:
+      version: ${{ steps.chart.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Helm
+        uses: azure/setup-helm@v4
+
+      - name: Read chart version
+        id: chart
+        run: |
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+
+          version = None
+          for line in Path("helm-chart/Chart.yaml").read_text(encoding="utf-8").splitlines():
+              if line.startswith("version:"):
+                  version = line.split(":", 1)[1].strip().strip('"')
+                  break
+          if not version:
+              raise SystemExit("helm-chart/Chart.yaml version is missing")
+
+          with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as fh:
+              fh.write(f"version={version}\n")
+          PY
+
+      - name: Validate default chart render
+        run: helm template job-aggregator ./helm-chart
+
+      - name: Validate browser crawler render
+        run: helm template job-aggregator ./helm-chart -f ./helm-chart/examples/browser-crawler.values.yaml
+
+      - name: Validate shared PVC override render
+        run: helm template job-aggregator ./helm-chart -f ./helm-chart/examples/existing-shared-pvc.values.yaml
+
+      - name: Validate NATS render
+        run: helm template job-aggregator ./helm-chart -f ./helm-chart/examples/nats.values.yaml
+
+      - name: Package chart
+        env:
+          VERSION_SEMVER: ${{ steps.chart.outputs.version }}
+        run: |
+          mkdir -p .release/packages
+          helm package ./helm-chart --destination ./.release/packages
+          test -f "./.release/packages/job-aggregator-${VERSION_SEMVER}.tgz"
+
+      - name: Prepare Pages chart repo content
+        env:
+          VERSION_SEMVER: ${{ steps.chart.outputs.version }}
+          PAGES_URL: https://lynh7.github.io/job-aggregator
+        run: |
+          set -euo pipefail
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+
+          rm -rf .release/gh-pages .release/pages-site
+          if git ls-remote --exit-code --heads origin gh-pages >/dev/null 2>&1; then
+            git fetch origin gh-pages
+            git worktree add .release/gh-pages origin/gh-pages
+            (
+              cd .release/gh-pages
+              git checkout -B gh-pages origin/gh-pages
+            )
+          else
+            git worktree add --detach .release/gh-pages
+            (
+              cd .release/gh-pages
+              git checkout --orphan gh-pages
+              find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+            )
+          fi
+
+          mkdir -p .release/pages-site
+          cp -R ./.release/gh-pages/. ./.release/pages-site/ 2>/dev/null || true
+          cp ./.release/packages/*.tgz ./.release/pages-site/
+          touch ./.release/pages-site/.nojekyll
+          helm repo index ./.release/pages-site --url "${PAGES_URL}"
+
+          (
+            cd .release/gh-pages
+            rm -rf ./*
+            rm -f .nojekyll index.yaml
+            cp -R ../pages-site/. .
+            git add .
+            if git diff --cached --quiet; then
+              echo "No chart repository changes to publish."
+              exit 0
+            fi
+            git commit -m "Snapshot Helm chart site v${VERSION_SEMVER}"
+            git push origin gh-pages
+          )
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload GitHub Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./.release/pages-site
+
+  deploy-pages:
+    needs:
+      - release
+    runs-on:
+      - self-hosted
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

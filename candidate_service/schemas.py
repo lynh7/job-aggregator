@@ -8,6 +8,7 @@ class CandidateCreateResponse(BaseModel):
     document_id: int
     task_id: int
     status: str
+    job_search_id: int | None = None
 
 
 class CandidateResponse(BaseModel):
@@ -105,11 +106,34 @@ class CandidateApplyResponse(BaseModel):
     queued: int
     task_ids: list[int]
 
+class CandidateJobSearchRequest(BaseModel):
+    keywords: list[str] = Field(min_length=1)
+    location: str | None = None
+    is_active: bool = True
+    crawl_interval_hours: int | None = Field(default=None, ge=1, le=24)
+
+
+class CandidateJobSearchResponse(BaseModel):
+    id: int
+    candidate_id: int
+    keywords: list[str]
+    keyword_signature: str
+    location: str | None
+    is_active: bool
+    crawl_interval_hours: int
+    last_crawled_at: datetime | None
+    next_crawl_at: datetime
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
 
 class CandidateDetailResponse(BaseModel):
     candidate: CandidateResponse
     latest_profile: CandidateProfileResponse | None
     tasks: list[CandidateTaskResponse]
+    job_searches: list[CandidateJobSearchResponse]
 
 
 class CandidateRematchRequest(BaseModel):

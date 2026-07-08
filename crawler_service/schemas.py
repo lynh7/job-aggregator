@@ -1,4 +1,4 @@
-from app.schemas import IngestResponse, SearchRequest
+from shared.schemas import IngestResponse, SearchRequest
 
 
 class CrawlRequest(SearchRequest):

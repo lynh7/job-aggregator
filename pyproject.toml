@@ -17,6 +17,7 @@ dependencies = [
   "python-multipart>=0.0.20,<1",
   "pydantic-settings>=2.6,<3",
   "sqlalchemy>=2.0,<3",
+  "structlog>=24.4,<26",
   "uvicorn[standard]>=0.32,<1",
 ]
 
@@ -39,7 +40,7 @@ job-aggregator = "app.cli:main"
 candidate-worker = "candidate_service.worker:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["app", "candidate_service", "crawler_service"]
+packages = ["app", "candidate_service", "crawler_service", "shared"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -1,5 +1,5 @@
 from app.business_rules.registry import build_business_rules_registry
-from app.schemas import RawJobRecord
+from shared.schemas import RawJobRecord
 
 
 def test_topcv_rule_preserves_raw_payload_and_maps_master_record():
