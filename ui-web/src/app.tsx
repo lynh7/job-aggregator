@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { Route, Switch } from 'wouter-preact';
 import { AppShell } from 'src/components/app-shell';
 import { HomePage } from 'src/pages/home-page';

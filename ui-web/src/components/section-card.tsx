@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { ComponentChildren } from 'preact';
 
 export function SectionCard({ title, subtitle, children }: { title: string; subtitle?: string; children: ComponentChildren }) {

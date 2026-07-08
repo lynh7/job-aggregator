@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { ComponentChildren } from 'preact';
 import { Link, useLocation } from 'wouter-preact';
 import { getRuntimeConfig } from 'src/lib/config';

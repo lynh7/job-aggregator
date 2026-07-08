@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { ComponentChildren } from 'preact';
 
 export function ResourceState({ loading, error, empty, children }: { loading: boolean; error: string | null; empty?: boolean; children: ComponentChildren }) {

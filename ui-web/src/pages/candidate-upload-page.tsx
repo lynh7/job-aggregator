@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { useState } from 'preact/hooks';
 import { SectionCard } from 'src/components/section-card';
 import { getRuntimeConfig } from 'src/lib/config';

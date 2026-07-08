@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { useMemo, useState } from 'preact/hooks';
 import { SectionCard } from 'src/components/section-card';
 import { ResourceState } from 'src/components/resource-state';

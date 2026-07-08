@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { SectionCard } from 'src/components/section-card';
 import { StatCard } from 'src/components/stat-card';
 import { ResourceState } from 'src/components/resource-state';

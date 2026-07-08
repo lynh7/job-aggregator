@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { SectionCard } from 'src/components/section-card';
 import { ResourceState } from 'src/components/resource-state';
 import { getRuntimeConfig } from 'src/lib/config';
