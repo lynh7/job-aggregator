@@ -1,0 +1,21 @@
+{
+  "name": "job-aggregator-ui-web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview --host 0.0.0.0 --port 4173"
+  },
+  "dependencies": {
+    "@shoelace-style/shoelace": "^2.20.1",
+    "preact": "^10.27.2",
+    "wouter-preact": "^3.7.1"
+  },
+  "devDependencies": {
+    "@preact/preset-vite": "^2.10.2",
+    "typescript": "^5.8.3",
+    "vite": "^7.0.0"
+  }
+}

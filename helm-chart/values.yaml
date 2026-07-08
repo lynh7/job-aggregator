@@ -214,6 +214,62 @@ candidateWorker:
     maxReplicas: 2
     targetCPUUtilizationPercentage: 80
 
+uiWeb:
+  enabled: true
+  replicaCount: 2
+  image:
+    repository: ghcr.io/lynh7/job-aggregator-ui-web
+    tag: ""
+    pullPolicy: ""
+  command: []
+  args: []
+  containerPorts:
+    - name: http
+      containerPort: 8080
+  service:
+    enabled: true
+    type: ClusterIP
+    name: http
+    port: 8080
+    targetPort: 8080
+    extraPorts: []
+  env:
+    - name: UI_JOB_API_BASE_URL
+      value: /job-api/api/v1
+    - name: UI_CANDIDATE_API_BASE_URL
+      value: /candidate-api/api/v1
+    - name: UI_ENVIRONMENT
+      value: cluster
+  envFrom: []
+  useGlobalEnv: true
+  useGlobalEnvFrom: true
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+  volumeMounts: []
+  volumes: []
+  persistence:
+    useSharedData: false
+  podAnnotations: {}
+  podLabels: {}
+  readinessProbe:
+    httpGet:
+      path: /healthz
+      port: 8080
+  livenessProbe:
+    httpGet:
+      path: /healthz
+      port: 8080
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 6
+    targetCPUUtilizationPercentage: 70
+
 nats:
   enabled: false
   replicaCount: 1

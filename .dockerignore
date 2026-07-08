@@ -13,3 +13,5 @@ data/candidates
 data/exports
 *.Zone.Identifier
 
+ui-web/node_modules
+ui-web/dist

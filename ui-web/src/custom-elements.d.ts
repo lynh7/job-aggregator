@@ -1,0 +1,17 @@
+declare namespace JSX {
+  interface IntrinsicElements {
+    [elemName: string]: any;
+  }
+}
+
+declare global {
+  interface Window {
+    __JOB_AGGREGATOR_CONFIG__?: {
+      jobApiBaseUrl?: string;
+      candidateApiBaseUrl?: string;
+      environment?: string;
+    };
+  }
+}
+
+export {};
