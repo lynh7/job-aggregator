@@ -15,6 +15,7 @@ from candidate_service.service import (
     upsert_candidate_job_search,
 )
 from candidate_service.task_queue import claim_candidate_task, enqueue_candidate_task
+from candidate_service.worker import process_one_task
 from shared.config import Settings
 from shared.database import Base
 from shared.models import Candidate, CandidateJobSearch, CandidateTask, Job, JobApplication, JobMatch
@@ -197,3 +198,57 @@ def test_candidate_job_search_schedules_crawl_task_and_rematch(tmp_path, monkeyp
     rematch_task = session.scalar(select(CandidateTask).where(CandidateTask.task_type == "rematch"))
     assert rematch_task is not None
     assert rematch_task.candidate_id == candidate.id
+
+
+def test_candidate_submission_rolls_back_when_task_enqueue_fails(tmp_path, monkeypatch):
+    session, settings = build_session(tmp_path)
+
+    def fail_enqueue(*args, **kwargs):
+        raise RuntimeError("queue unavailable")
+
+    monkeypatch.setattr("candidate_service.service.enqueue_candidate_task", fail_enqueue)
+
+    try:
+        create_candidate_submission(
+            session,
+            settings,
+            UploadStub("cv.txt", "Alex Example\nEmail: alex@example.com"),
+            {"full_name": "Alex Example", "email": "alex@example.com"},
+        )
+    except RuntimeError as exc:
+        assert str(exc) == "queue unavailable"
+    else:
+        raise AssertionError("expected queue failure")
+
+    assert session.scalar(select(Candidate)) is None
+    assert session.scalar(select(CandidateTask)) is None
+    assert list((tmp_path / "candidates").glob("*")) == []
+
+
+def test_worker_process_does_not_schedule_due_searches(tmp_path, monkeypatch):
+    session, settings = build_session(tmp_path)
+    candidate = Candidate(status="uploaded", consent_given=True)
+    session.add(candidate)
+    session.commit()
+    session.refresh(candidate)
+
+    enqueue_candidate_task(
+        session,
+        task_type="rematch",
+        candidate_id=candidate.id,
+        payload={"limit": 1},
+    )
+
+    called = {"scheduler": False}
+
+    def fail_if_called(*args, **kwargs):
+        called["scheduler"] = True
+        raise AssertionError("scheduler should not run in worker")
+
+    monkeypatch.setattr("candidate_service.worker.rematch_candidate", lambda *args, **kwargs: 0)
+    monkeypatch.setattr("candidate_service.worker.enqueue_due_job_search_tasks", fail_if_called, raising=False)
+
+    processed = process_one_task(session, "worker-a")
+
+    assert processed is True
+    assert called["scheduler"] is False

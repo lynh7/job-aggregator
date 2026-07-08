@@ -6,7 +6,6 @@ from pathlib import Path
 
 from fastapi import UploadFile
 from sqlalchemy import delete, select
-from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
 
 from app.connectors.base import ProviderApplicationRequest
@@ -27,6 +26,7 @@ from shared.models import (
     JobApplication,
     JobMatch,
 )
+from shared.persistence import upsert_rows
 
 logger = get_logger(__name__)
 
@@ -48,40 +48,50 @@ def create_candidate_submission(
     _validate_upload(upload)
     settings.candidate_storage_dir.mkdir(parents=True, exist_ok=True)
 
-    candidate = Candidate(
-        full_name=metadata.get("full_name"),
-        email=metadata.get("email"),
-        phone=metadata.get("phone"),
-        location=metadata.get("location"),
-        status="uploaded",
-        consent_given=True,
-    )
-    session.add(candidate)
-    session.flush()
+    storage_path: Path | None = None
+    try:
+        with session.begin():
+            candidate = Candidate(
+                full_name=metadata.get("full_name"),
+                email=metadata.get("email"),
+                phone=metadata.get("phone"),
+                location=metadata.get("location"),
+                status="uploaded",
+                consent_given=True,
+            )
+            session.add(candidate)
+            session.flush()
 
-    storage_name = f"{candidate.id}-{uuid.uuid4().hex}{Path(upload.filename or '').suffix.lower()}"
-    storage_path = settings.candidate_storage_dir / storage_name
-    with storage_path.open("wb") as target:
-        shutil.copyfileobj(upload.file, target)
+            storage_name = f"{candidate.id}-{uuid.uuid4().hex}{Path(upload.filename or '').suffix.lower()}"
+            storage_path = settings.candidate_storage_dir / storage_name
+            with storage_path.open("wb") as target:
+                shutil.copyfileobj(upload.file, target)
 
-    document = CandidateDocument(
-        candidate_id=candidate.id,
-        filename=upload.filename or storage_name,
-        content_type=upload.content_type or "application/octet-stream",
-        storage_path=str(storage_path),
-        file_size_bytes=storage_path.stat().st_size,
-    )
-    session.add(document)
-    session.commit()
-    session.refresh(candidate)
-    session.refresh(document)
+            document = CandidateDocument(
+                candidate_id=candidate.id,
+                filename=upload.filename or storage_name,
+                content_type=upload.content_type or "application/octet-stream",
+                storage_path=str(storage_path),
+                file_size_bytes=storage_path.stat().st_size,
+            )
+            session.add(document)
+            session.flush()
 
-    task = enqueue_candidate_task(
-        session,
-        task_type="parse_and_match",
-        candidate_id=candidate.id,
-        payload={"document_id": document.id},
-    )
+            task = enqueue_candidate_task(
+                session,
+                task_type="parse_and_match",
+                candidate_id=candidate.id,
+                payload={"document_id": document.id},
+                commit=False,
+            )
+
+        session.refresh(candidate)
+        session.refresh(document)
+    except Exception:
+        if storage_path is not None and storage_path.exists():
+            storage_path.unlink(missing_ok=True)
+        raise
+
     logger.info(
         "candidate.submission.created",
         candidate_id=candidate.id,
@@ -185,15 +195,12 @@ def rematch_candidate(session: Session, settings: Settings, candidate_id: int, l
             "missing_skills": result.missing_skills,
             "rule_version": MATCH_RULE_VERSION,
         }
-        if session.bind is not None and session.bind.dialect.name == "sqlite":
-            statement = sqlite_insert(JobMatch).values(**values)
-            statement = statement.on_conflict_do_update(
-                index_elements=["candidate_id", "job_key", "rule_version"],
-                set_=values,
-            )
-            session.execute(statement)
-        else:
-            session.add(JobMatch(**values))
+        upsert_rows(
+            session,
+            JobMatch,
+            [values],
+            ["candidate_id", "job_key", "rule_version"],
+        )
     session.commit()
 
     matched_count = min(len(scored), max_results)

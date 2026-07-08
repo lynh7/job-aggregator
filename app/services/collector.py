@@ -1,8 +1,7 @@
 import asyncio
 from pathlib import Path
 
-from sqlalchemy import select, tuple_
-from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.business_rules.base import RuleResult
@@ -13,6 +12,7 @@ from app.connectors.base import JobProvider
 from app.models import Job, RawJob
 from app.schemas import RawJobRecord
 from app.services.exporter import export_jobs
+from shared.persistence import fetch_existing_keys, load_rows_by_keys, upsert_rows
 
 logger = get_logger(__name__)
 
@@ -77,52 +77,16 @@ def store_raw_jobs(session: Session, results: list[RuleResult]) -> list[RawJob]:
         return []
 
     keys = [_raw_key(result.raw.provider, result.raw.api_version, result.raw.source_record_id) for result in results]
-    existing_keys = set(
-        session.execute(
-            select(RawJob.provider, RawJob.api_version, RawJob.source_record_id).where(
-                tuple_(RawJob.provider, RawJob.api_version, RawJob.source_record_id).in_(keys)
-            )
-        ).all()
-    )
+    existing_keys = fetch_existing_keys(session, RawJob, ["provider", "api_version", "source_record_id"], keys)
+    rows: list[dict[str, object]] = []
     for result in results:
         values = result.raw.model_dump()
         values["rule_version"] = result.rule_version
-        if session.bind is not None and session.bind.dialect.name == "sqlite":
-            statement = sqlite_insert(RawJob).values(**values)
-            statement = statement.on_conflict_do_update(
-                index_elements=["provider", "api_version", "source_record_id"],
-                set_={
-                    key: value
-                    for key, value in values.items()
-                    if key not in {"provider", "api_version", "source_record_id"}
-                },
-            )
-            session.execute(statement)
-        else:
-            existing = session.scalar(
-                select(RawJob).where(
-                    RawJob.provider == result.raw.provider,
-                    RawJob.api_version == result.raw.api_version,
-                    RawJob.source_record_id == result.raw.source_record_id,
-                )
-            )
-            if existing:
-                for key, value in values.items():
-                    setattr(existing, key, value)
-            else:
-                session.add(RawJob(**values))
+        rows.append(values)
+
+    upsert_rows(session, RawJob, rows, ["provider", "api_version", "source_record_id"])
     session.commit()
-    stored = list(
-        session.scalars(
-            select(RawJob).where(
-                tuple_(
-                    RawJob.provider,
-                    RawJob.api_version,
-                    RawJob.source_record_id,
-                ).in_(keys)
-            )
-        )
-    )
+    stored = load_rows_by_keys(session, RawJob, ["provider", "api_version", "source_record_id"], keys)
     logger.info(
         "collector.raw_jobs.stored",
         total=len(stored),
@@ -143,14 +107,9 @@ def store_master_jobs(session: Session, results: list[RuleResult], raw_jobs: lis
         for result in results
         if result.standard is not None
     ]
-    existing_keys = set(
-        session.execute(
-            select(Job.provider, Job.api_version, Job.source_record_id).where(
-                tuple_(Job.provider, Job.api_version, Job.source_record_id).in_(candidate_keys)
-            )
-        ).all()
-    ) if candidate_keys else set()
+    existing_keys = fetch_existing_keys(session, Job, ["provider", "api_version", "source_record_id"], candidate_keys) if candidate_keys else set()
 
+    rows: list[dict[str, object]] = []
     for result in results:
         if result.standard is None:
             continue
@@ -170,45 +129,13 @@ def store_master_jobs(session: Session, results: list[RuleResult], raw_jobs: lis
         master_key = _raw_key(result.raw.provider, result.raw.api_version, result.raw.source_record_id)
         master_keys.append(master_key)
 
-        if session.bind is not None and session.bind.dialect.name == "sqlite":
-            statement = sqlite_insert(Job).values(**values)
-            statement = statement.on_conflict_do_update(
-                index_elements=["provider", "api_version", "source_record_id"],
-                set_={
-                    key: value
-                    for key, value in values.items()
-                    if key not in {"provider", "api_version", "source_record_id"}
-                },
-            )
-            session.execute(statement)
-        else:
-            existing = session.scalar(
-                select(Job).where(
-                    Job.provider == result.raw.provider,
-                    Job.api_version == result.raw.api_version,
-                    Job.source_record_id == result.raw.source_record_id,
-                )
-            )
-            if existing:
-                for key, value in values.items():
-                    setattr(existing, key, value)
-            else:
-                session.add(Job(**values))
+        rows.append(values)
 
     if not master_keys:
         return []
+    upsert_rows(session, Job, rows, ["provider", "api_version", "source_record_id"])
     session.commit()
-    stored = list(
-        session.scalars(
-            select(Job).where(
-                tuple_(
-                    Job.provider,
-                    Job.api_version,
-                    Job.source_record_id,
-                ).in_(master_keys)
-            )
-        )
-    )
+    stored = load_rows_by_keys(session, Job, ["provider", "api_version", "source_record_id"], master_keys)
     logger.info(
         "collector.master_jobs.stored",
         total=len(stored),

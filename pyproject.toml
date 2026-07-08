@@ -38,6 +38,7 @@ dev = [
 [project.scripts]
 job-aggregator = "app.cli:main"
 candidate-worker = "candidate_service.worker:main"
+candidate-scheduler = "candidate_service.scheduler:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["app", "candidate_service", "crawler_service", "shared"]

@@ -4,7 +4,6 @@ import time
 from sqlalchemy.orm import Session
 
 from candidate_service.service import (
-    enqueue_due_job_search_tasks,
     process_candidate_job_search,
     process_candidate_submission,
     process_job_application,
@@ -21,8 +20,6 @@ logger = get_logger(__name__)
 
 def process_one_task(session: Session, worker_id: str) -> bool:
     settings = get_settings()
-    if settings.candidate_crawl_scheduler_enabled:
-        enqueue_due_job_search_tasks(session, settings)
     task = claim_candidate_task(session, worker_id=worker_id)
     if task is None:
         return False
@@ -81,8 +78,6 @@ def main() -> None:
         "worker.started",
         worker_id=worker_id,
         poll_seconds=poll_seconds,
-        crawl_scheduler_enabled=settings.candidate_crawl_scheduler_enabled,
-        crawl_interval_hours=settings.candidate_crawl_interval_hours,
     )
     while True:
         with SessionLocal() as session:

@@ -16,6 +16,7 @@ def enqueue_candidate_task(
     candidate_id: int,
     payload: dict,
     max_attempts: int = 5,
+    commit: bool = True,
 ) -> CandidateTask:
     task = CandidateTask(
         task_type=task_type,
@@ -26,8 +27,10 @@ def enqueue_candidate_task(
         available_at=datetime.now(UTC),
     )
     session.add(task)
-    session.commit()
-    session.refresh(task)
+    session.flush()
+    if commit:
+        session.commit()
+        session.refresh(task)
     logger.info(
         "task.queued",
         task_id=task.id,

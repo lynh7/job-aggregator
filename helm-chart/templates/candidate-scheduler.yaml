@@ -1,0 +1,8 @@
+{{- if .Values.candidateScheduler.enabled }}
+{{- $databaseEnv := include "job-aggregator.databaseUrlEnv" . | fromYamlArray -}}
+{{ include "job-aggregator.componentDeployment" (dict "root" . "name" "candidate-scheduler" "component" .Values.candidateScheduler "defaultEnv" $databaseEnv) }}
+{{- if .Values.candidateScheduler.autoscaling.enabled }}
+---
+{{ include "job-aggregator.componentHpa" (dict "root" . "name" "candidate-scheduler" "component" .Values.candidateScheduler) }}
+{{- end }}
+{{- end }}

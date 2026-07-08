@@ -215,6 +215,43 @@ candidateWorker:
     maxReplicas: 2
     targetCPUUtilizationPercentage: 80
 
+candidateScheduler:
+  enabled: true
+  replicaCount: 1
+  image:
+    repository: ghcr.io/lynh7/job-aggregator-candidate-worker
+    tag: "0.1.12"
+    pullPolicy: ""
+  command:
+    - candidate-scheduler
+  args: []
+  containerPorts: []
+  service:
+    enabled: false
+    type: ClusterIP
+    name: http
+    port: 80
+    targetPort: 80
+    extraPorts: []
+  env: []
+  envFrom: []
+  useGlobalEnv: true
+  useGlobalEnvFrom: true
+  resources: {}
+  volumeMounts: []
+  volumes: []
+  persistence:
+    useSharedData: true
+  podAnnotations: {}
+  podLabels: {}
+  readinessProbe: {}
+  livenessProbe: {}
+  autoscaling:
+    enabled: false
+    minReplicas: 1
+    maxReplicas: 1
+    targetCPUUtilizationPercentage: 80
+
 uiWeb:
   enabled: true
   replicaCount: 2
