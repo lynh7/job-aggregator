@@ -139,7 +139,7 @@ candidateApi:
   queueBackend: database
   image:
     repository: ghcr.io/lynh7/job-aggregator-candidate-api
-    tag: "0.1.12"
+    tag: "0.1.13"
     pullPolicy: ""
   command: []
   args: []
@@ -184,7 +184,7 @@ candidateWorker:
   queueBackend: database
   image:
     repository: ghcr.io/lynh7/job-aggregator-candidate-worker
-    tag: "0.1.12"
+    tag: "0.1.13"
     pullPolicy: ""
   command: []
   args: []
