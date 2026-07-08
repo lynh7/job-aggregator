@@ -13,6 +13,7 @@ COMPONENT_TAG_PATHS = {
     "candidate-worker": ["candidateWorker", "image", "tag"],
     "crawler-api": ["crawlerApi", "imageVariants", "lightweight", "tag"],
     "crawler-api-browser": ["crawlerApi", "imageVariants", "browser", "tag"],
+    "ui-web": ["uiWeb", "image", "tag"],
 }
 
 

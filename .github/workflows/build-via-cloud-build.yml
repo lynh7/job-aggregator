@@ -158,7 +158,7 @@ jobs:
                       if path.startswith('app/'):
                           selected.add('job-api')
                       if path.startswith('shared/'):
-                          selected.update(images)
+                          selected.update(backend_images)
                       if path == 'docker/job-api.Dockerfile':
                           selected.add('job-api')
                       if path.startswith('candidate_service/') or path in {
@@ -171,6 +171,8 @@ jobs:
                           'docker/crawler-api-browser.Dockerfile',
                       }:
                           selected.update({'crawler-api', 'crawler-api-browser'})
+                      if path.startswith('ui-web/') or path.startswith('docker/ui-web'):
+                          selected.add('ui-web')
  
               selected = sorted(selected)
               if selected:
@@ -208,7 +210,7 @@ jobs:
                       if path.startswith('app/'):
                           selected.add('job-api')
                       if path.startswith('shared/'):
-                          selected.update(images)
+                          selected.update(backend_images)
                       if path == 'docker/job-api.Dockerfile':
                           selected.add('job-api')
                       if path.startswith('candidate_service/') or path in {
