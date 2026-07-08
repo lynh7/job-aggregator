@@ -68,7 +68,6 @@ jobs:
             set +e
             output=$(kubeconform \
               -cache .kubeconform-cache \
-              -schema-location 'https://kubernetesjsonschema.dev/{{.NormalizedKubernetesVersion}}-standalone{{.StrictSuffix}}/{{.ResourceKind}}{{.KindSuffix}}.json' \
               -schema-location default \
               -summary \
               -verbose \
@@ -85,7 +84,7 @@ jobs:
               exit "$status"
             fi
 
-            if ! printf '%s' "$output" | grep -Eqi 'failed downloading schema|giving up after|timeout|temporary failure|connection reset|tls handshake timeout|i/o timeout|no such host'; then
+            if ! printf '%s' "$output" | grep -Eqi 'failed downloading schema|giving up after|timeout|temporary failure|connection reset|tls handshake timeout|i/o timeout|no such host|failed to verify certificate|x509'; then
               exit "$status"
             fi
 
