@@ -123,6 +123,29 @@ jobs:
               names = list(images)
               print(reason)
               return names
+
+          def can_diff(before: str, current: str) -> bool:
+              if not before or not current:
+                  return False
+              try:
+                  subprocess.check_call(
+                      ['git', 'rev-parse', '--verify', '--quiet', before],
+                      stdout=subprocess.DEVNULL,
+                      stderr=subprocess.DEVNULL,
+                  )
+                  subprocess.check_call(
+                      ['git', 'rev-parse', '--verify', '--quiet', current],
+                      stdout=subprocess.DEVNULL,
+                      stderr=subprocess.DEVNULL,
+                  )
+                  subprocess.check_call(
+                      ['git', 'merge-base', '--is-ancestor', before, current],
+                      stdout=subprocess.DEVNULL,
+                      stderr=subprocess.DEVNULL,
+                  )
+                  return True
+              except subprocess.CalledProcessError:
+                  return False
  
           if event_name == 'workflow_dispatch' and build_scope == 'all':
               selected = all_components(
@@ -181,6 +204,10 @@ jobs:
                   print('No image-producing paths changed.')
           elif not before_sha or set(before_sha) == {'0'}:
               selected = all_components('No usable previous SHA: build every image.')
+          elif not can_diff(before_sha, current_sha):
+              selected = all_components(
+                  f'Previous SHA {before_sha} is not available as an ancestor of {current_sha}: build every image.'
+              )
           else:
               diff = subprocess.check_output(
                   ['git', 'diff', '--name-only', f'{before_sha}..{current_sha}'],
