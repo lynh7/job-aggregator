@@ -58,4 +58,36 @@ jobs:
 
       - name: Schema-validate rendered manifests
         if: ${{ inputs.use-kubeconform }}
-        run: kubeconform -summary -verbose rendered.yaml
+        run: |
+          mkdir -p .kubeconform-cache
+          attempts=0
+          max_attempts=3
+          while true; do
+            attempts=$((attempts + 1))
+            echo "kubeconform attempt ${attempts}/${max_attempts}"
+            set +e
+            output=$(kubeconform \
+              -cache .kubeconform-cache \
+              -schema-location 'https://kubernetesjsonschema.dev/{{.NormalizedKubernetesVersion}}-standalone{{.StrictSuffix}}/{{.ResourceKind}}{{.KindSuffix}}.json' \
+              -schema-location default \
+              -summary \
+              -verbose \
+              rendered.yaml 2>&1)
+            status=$?
+            set -e
+            printf '%s\n' "$output"
+
+            if [ "$status" -eq 0 ]; then
+              break
+            fi
+
+            if [ "$attempts" -ge "$max_attempts" ]; then
+              exit "$status"
+            fi
+
+            if ! printf '%s' "$output" | grep -Eqi 'failed downloading schema|giving up after|timeout|temporary failure|connection reset|tls handshake timeout|i/o timeout|no such host'; then
+              exit "$status"
+            fi
+
+            sleep 5
+          done
