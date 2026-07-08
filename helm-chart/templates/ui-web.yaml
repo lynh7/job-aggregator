@@ -1,0 +1,9 @@
+{{- if .Values.uiWeb.enabled }}
+{{ include "job-aggregator.componentDeployment" (dict "root" . "name" "ui-web" "component" .Values.uiWeb) }}
+---
+{{ include "job-aggregator.componentService" (dict "root" . "name" "ui-web" "component" .Values.uiWeb) }}
+{{- if .Values.uiWeb.autoscaling.enabled }}
+---
+{{ include "job-aggregator.componentHpa" (dict "root" . "name" "ui-web" "component" .Values.uiWeb) }}
+{{- end }}
+{{- end }}

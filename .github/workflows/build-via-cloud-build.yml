@@ -13,6 +13,7 @@ on:
       - 'pyproject.toml'
       - '.dockerignore'
       - 'cloudbuild.remote.yaml'
+      - 'ui-web/**'
       - '.github/workflows/build-via-cloud-build.yml'
       - '.github/workflows/validation-cases.yml'
       - '.github/scripts/**'
@@ -98,6 +99,18 @@ jobs:
                   'dockerfile': 'docker/crawler-api-browser.Dockerfile',
                   'image': 'ghcr.io/lynh7/job-aggregator-crawler-api-browser',
               },
+              'ui-web': {
+                  'dockerfile': 'docker/ui-web.Dockerfile',
+                  'image': 'ghcr.io/lynh7/job-aggregator-ui-web',
+              },
+          }
+
+          backend_images = {
+              'job-api',
+              'candidate-api',
+              'candidate-worker',
+              'crawler-api',
+              'crawler-api-browser',
           }
  
           event_name = os.environ['EVENT_NAME']
@@ -209,6 +222,9 @@ jobs:
                       }:
                           selected.update({'crawler-api', 'crawler-api-browser'})
  
+                      if path.startswith('ui-web/') or path.startswith('docker/ui-web'):
+                          selected.add('ui-web')
+
               selected = sorted(selected)
               if selected:
                   print('Selected images: ' + ', '.join(selected))

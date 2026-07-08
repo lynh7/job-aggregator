@@ -15,6 +15,7 @@ response, applying versioned business rules, and exporting JSON/XLSX files.
 - PostgreSQL/Supabase-compatible `DATABASE_URL` for deployment
 - JSON and XLSX exports
 - Separate candidate-matching backend service
+- Thin `ui-web` SPA for candidate and administrator workflows using `Vite + Preact + TypeScript + Shoelace`
 - Lightweight NATS messaging app for future event-driven workflows
 - `helm-chart/` for the recommended Kubernetes deployment topology
 - Docker-ready
@@ -274,3 +275,11 @@ Recommended GitOps split:
 
 - this repo owns chart structure, defaults, and release automation
 - your GitOps repo owns environment-specific overrides such as secrets, ingress, storage class, replica tuning, and immutable image pinning when you want SHA-based rollouts
+
+## Roadmap
+
+- Add a dedicated UI service for both candidates and administrators.
+- Keep the frontend as UI-only: no business logic, no authz source of truth, client-side rendering only.
+- UI stack: `Vite + Preact + TypeScript + Shoelace`.
+- Authentication service/pod: `Authentik` or `Keycloak` via OIDC.
+- Authorization service/pod: `OPA` for centralized policy decisions enforced by backend APIs.
