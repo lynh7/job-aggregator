@@ -30,6 +30,15 @@ export type RawJob = {
   fetched_at: string;
 };
 
+export type CrawlResponse = {
+  fetched: number;
+  stored: number;
+  duplicates_filtered: number;
+  providers: string[];
+  json_export: string | null;
+  xlsx_export: string | null;
+};
+
 export type Candidate = {
   id: number;
   full_name: string | null;

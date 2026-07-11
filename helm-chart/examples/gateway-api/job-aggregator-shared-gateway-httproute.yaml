@@ -32,6 +32,14 @@ spec:
     - matches:
         - path:
             type: PathPrefix
+            value: /crawler-api
+      backendRefs:
+        - kind: Service
+          name: job-aggregator-crawler-api
+          port: 8200
+    - matches:
+        - path:
+            type: PathPrefix
             value: /
       backendRefs:
         - kind: Service

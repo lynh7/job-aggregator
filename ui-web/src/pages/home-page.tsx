@@ -36,8 +36,16 @@ export function HomePage() {
       <SectionCard title="Why this UI exists" subtitle="Frontend concerns only">
         <ul class="bullet-list">
           <li>Candidate workflows: upload CV, inspect matches, submit applications.</li>
-          <li>Admin workflows: inspect jobs, raw payloads, candidate state, and task failures.</li>
+          <li>Admin workflows: inspect jobs, raw payloads, candidate state, task failures, and trigger crawl runs.</li>
           <li>Runtime API URLs are injected by the container at startup, not hardcoded in the bundle.</li>
+        </ul>
+      </SectionCard>
+
+      <SectionCard title="Current crawl milestone" subtitle="Operational path available today">
+        <ul class="bullet-list">
+          <li>Administrators can trigger keyword-based multi-provider crawl from the UI.</li>
+          <li>Crawler API fetches provider data, then sends raw records into job-api ingest.</li>
+          <li>Candidate self-serve search and personalization remains a later product step.</li>
         </ul>
       </SectionCard>
 

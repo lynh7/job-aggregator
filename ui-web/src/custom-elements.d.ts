@@ -15,6 +15,7 @@ declare global {
     __JOB_AGGREGATOR_CONFIG__?: {
       jobApiBaseUrl?: string;
       candidateApiBaseUrl?: string;
+      crawlerApiBaseUrl?: string;
       environment?: string;
     };
   }

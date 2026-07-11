@@ -7,6 +7,25 @@ export type FetchState<T> = {
   refresh: () => void;
 };
 
+async function readErrorDetail(response: Response): Promise<string> {
+  const contentType = response.headers.get('content-type') ?? '';
+
+  if (contentType.toLowerCase().includes('application/json')) {
+    try {
+      const payload = await response.json() as { detail?: unknown };
+      if (typeof payload.detail === 'string' && payload.detail.trim()) {
+        return payload.detail;
+      }
+      return JSON.stringify(payload);
+    } catch {
+      return `Request failed with ${response.status}`;
+    }
+  }
+
+  const detail = await response.text();
+  return detail || `Request failed with ${response.status}`;
+}
+
 export async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, {
     ...init,
@@ -17,7 +36,7 @@ export async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> 
   });
 
   if (!response.ok) {
-    const detail = await response.text();
+    const detail = await readErrorDetail(response);
     throw new Error(detail || `Request failed with ${response.status} for ${url}`);
   }
 
@@ -28,6 +47,18 @@ export async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> 
   }
 
   return (await response.json()) as T;
+}
+
+export async function postJson<T>(url: string, payload: unknown, init?: RequestInit): Promise<T> {
+  return fetchJson<T>(url, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+    ...init,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(init?.headers ?? {}),
+    },
+  });
 }
 
 export function useJsonResource<T>(factory: () => string | null, deps: unknown[] = []): FetchState<T> {

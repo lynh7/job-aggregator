@@ -8,6 +8,7 @@ import { CandidatesPage } from 'src/pages/candidates-page';
 import { TasksPage } from 'src/pages/tasks-page';
 import { CandidateUploadPage } from 'src/pages/candidate-upload-page';
 import { CandidateLookupPage } from 'src/pages/candidate-lookup-page';
+import { AdminCrawlPage } from 'src/pages/admin-crawl-page';
 
 export function App() {
   return (
@@ -17,6 +18,7 @@ export function App() {
         <Route path="/jobs" component={JobsPage} />
         <Route path="/candidate/upload" component={CandidateUploadPage} />
         <Route path="/candidate/lookup" component={CandidateLookupPage} />
+        <Route path="/admin/crawl" component={AdminCrawlPage} />
         <Route path="/admin/jobs" component={JobsPage} />
         <Route path="/admin/raw-jobs" component={RawJobsPage} />
         <Route path="/admin/candidates" component={CandidatesPage} />

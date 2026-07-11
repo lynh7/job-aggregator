@@ -276,6 +276,8 @@ uiWeb:
       value: /job-api/api/v1
     - name: UI_CANDIDATE_API_BASE_URL
       value: /candidate-api/api/v1
+    - name: UI_CRAWLER_API_BASE_URL
+      value: /crawler-api/api/v1
     - name: UI_ENVIRONMENT
       value: cluster
   envFrom: []

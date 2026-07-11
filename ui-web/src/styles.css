@@ -214,6 +214,48 @@ a {
   font-weight: 600;
 }
 
+.field-label {
+  margin: 0 0 0.5rem;
+  font-weight: 600;
+}
+
+.inline-field-grid,
+.checkbox-grid,
+.result-grid {
+  display: grid;
+  gap: 1rem;
+}
+
+.inline-field-grid {
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.checkbox-grid {
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+}
+
+.check-option {
+  display: flex !important;
+  align-items: center;
+  gap: 0.65rem;
+  font-weight: 500 !important;
+}
+
+.check-option input {
+  margin: 0;
+}
+
+.result-grid {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.result-stat {
+  padding: 0.9rem;
+  border-radius: 0.9rem;
+  background: var(--surface-strong);
+  border: 1px solid rgba(143, 107, 70, 0.18);
+}
+
 .table-wrap {
   overflow: auto;
 }

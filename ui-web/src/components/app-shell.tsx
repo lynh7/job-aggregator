@@ -19,6 +19,7 @@ const navGroups = [
   {
     label: 'Admin',
     links: [
+      { href: '/admin/crawl', label: 'Trigger Crawl' },
       { href: '/admin/jobs', label: 'Jobs' },
       { href: '/admin/raw-jobs', label: 'Raw Jobs' },
       { href: '/admin/candidates', label: 'Candidates' },
@@ -67,6 +68,7 @@ export function AppShell({ children }: { children: ComponentChildren }) {
           <div class="endpoint-chips">
             <sl-badge pill>{config.jobApiBaseUrl}</sl-badge>
             <sl-badge pill>{config.candidateApiBaseUrl}</sl-badge>
+            <sl-badge pill>{config.crawlerApiBaseUrl}</sl-badge>
           </div>
         </header>
         {children}
