@@ -8,12 +8,15 @@ from pathlib import Path
 
 
 COMPONENT_TAG_PATHS = {
-    "job-api": ["jobApi", "image", "tag"],
-    "candidate-api": ["candidateApi", "image", "tag"],
-    "candidate-worker": ["candidateWorker", "image", "tag"],
-    "crawler-api": ["crawlerApi", "imageVariants", "lightweight", "tag"],
-    "crawler-api-browser": ["crawlerApi", "imageVariants", "browser", "tag"],
-    "ui-web": ["uiWeb", "image", "tag"],
+    "job-api": [["jobApi", "image", "tag"]],
+    "candidate-api": [["candidateApi", "image", "tag"]],
+    "candidate-worker": [
+        ["candidateWorker", "image", "tag"],
+        ["candidateScheduler", "image", "tag"],
+    ],
+    "crawler-api": [["crawlerApi", "imageVariants", "lightweight", "tag"]],
+    "crawler-api-browser": [["crawlerApi", "imageVariants", "browser", "tag"]],
+    "ui-web": [["uiWeb", "image", "tag"]],
 }
 
 
@@ -82,8 +85,8 @@ def command_plan_build(args: argparse.Namespace) -> int:
 
     for item in matrix:
         component = item["name"]
-        tag_path = COMPONENT_TAG_PATHS[component]
-        current = read_yaml_string(values_path, tag_path)
+        tag_paths = COMPONENT_TAG_PATHS[component]
+        current = read_yaml_string(values_path, tag_paths[0])
         item["version"] = bump_patch(current)
 
     payload = {
@@ -100,7 +103,8 @@ def command_apply_release_state(args: argparse.Namespace) -> int:
     matrix = json.loads(args.matrix_json)
 
     for item in matrix:
-        write_yaml_string(values_path, COMPONENT_TAG_PATHS[item["name"]], item["version"])
+        for tag_path in COMPONENT_TAG_PATHS[item["name"]]:
+            write_yaml_string(values_path, tag_path, item["version"])
     write_chart_versions(chart_path, args.chart_version)
     return 0
 
