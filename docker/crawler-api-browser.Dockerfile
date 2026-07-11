@@ -1,15 +1,18 @@
 FROM python:3.12-slim
 
-ENV PYTHONDONTWRITEBYTECODE=1     PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
 
 WORKDIR /app
 
-COPY pyproject.toml README.md ./
+COPY requirements/crawler-common.txt ./requirements/crawler-common.txt
+COPY requirements/crawler-browser.txt ./requirements/crawler-browser.txt
+RUN pip install --no-cache-dir -r ./requirements/crawler-browser.txt \
+    && python -m playwright install --with-deps chromium
+
 COPY app ./app
-COPY candidate_service ./candidate_service
 COPY crawler_service ./crawler_service
 COPY shared ./shared
-RUN pip install --no-cache-dir '.[crawler-browser]'     && python -m playwright install --with-deps chromium
 
 EXPOSE 8200
 CMD ["uvicorn", "crawler_service.main:app", "--host", "0.0.0.0", "--port", "8200"]

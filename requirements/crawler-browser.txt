@@ -1,0 +1,2 @@
+-r crawler-common.txt
+crawl4ai>=0.9,<1

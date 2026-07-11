@@ -25,8 +25,11 @@ steps:
       - -ceu
       - |
         cd /workspace/src
+        docker pull "${_GHCR_IMAGE}:latest" || true
         docker build \
           --progress=plain \
+          --build-arg BUILDKIT_INLINE_CACHE=1 \
+          --cache-from "${_GHCR_IMAGE}:latest" \
           --label "org.opencontainers.image.source=https://github.com/${_GITHUB_REPOSITORY}" \
           --label "org.opencontainers.image.revision=${_REVISION}" \
           --label "org.opencontainers.image.version=${_SEMVER_TAG}" \
