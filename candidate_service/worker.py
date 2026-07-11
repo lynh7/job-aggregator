@@ -84,6 +84,7 @@ def main() -> None:
             processed = process_one_task(session, worker_id)
         if not processed:
             time.sleep(poll_seconds)
+            
 
 if __name__ == "__main__":
     main()
