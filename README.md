@@ -144,7 +144,7 @@ Backends:
 
 - `ui-web/src/app.tsx`: route table
 - `ui-web/src/components/`: shell and presentational primitives
-- `ui-web/src/pages/`: candidate/admin screens
+- `ui-web/src/pages/`: candidate/admin screens. Current UI is still admin-heavy; candidate live crawl/personalized search flow is not complete yet.
 - `ui-web/src/lib/http.ts`: tiny client-side fetch helper
 - `ui-web/src/lib/config.ts`: runtime config loader from `/config.js`
 - `ui-web/src/lib/types.ts`: UI-side API response types
@@ -175,6 +175,38 @@ Current design note:
 - For schema or model changes, inspect `shared/models.py`, `shared/schemas.py`, Helm values, and affected API tests together.
 - For provider changes, touch crawler/connector output and business rules together.
 - For deployment changes, inspect `.github/workflows/`, `cloudbuild.remote.yaml`, `helm-chart/`, and current image-tag automation together.
+
+## Product Goal
+
+Target candidate journey:
+
+1. candidate goes to the website
+2. candidate enters keywords
+3. system fetches jobs from multiple providers
+4. system returns personalized jobs
+
+## Current Status
+
+Current product alignment is partial.
+
+Implemented today:
+
+- admin can inspect jobs, raw payloads, candidates, and tasks from the UI
+- admin can trigger multi-provider crawling from the UI as the current supported operational flow
+- crawler API can fetch jobs from multiple providers and ingest them into the core API
+- candidate profile parsing, matching, recurring searches, and background crawl scheduling exist
+- Gateway/path-based UI access can route `/job-api` and `/candidate-api` for browser use
+
+Current gap versus target journey:
+
+- candidate-facing live crawl from the UI is not the primary path yet
+- candidate-facing immediate personalized search results are not complete yet
+- personalization exists in backend matching, but not yet as a polished candidate search-now flow
+
+Current near-term UI direction:
+
+- admin-triggered crawl from the UI is the current operational target
+- candidate-triggered crawl-and-personalize flow is a later milestone
 
 ## Architecture
 
@@ -227,6 +259,16 @@ Search endpoint still exists for API-based providers, but the crawler path is no
 ```text
 crawler-api /api/v1/crawl -> core-api /api/v1/ingest/raw-jobs
 ```
+
+## UI Status
+
+Current UI behavior:
+
+- admin workflows are the most complete path today
+- admin-triggered crawl from the UI is the current supported crawl entrypoint
+- candidate workflows currently focus on upload, lookup, and viewing backend-derived state
+- manual multi-provider crawl is currently treated as an admin/operations capability
+- the intended end state is candidate-entered keywords leading to multi-provider crawl plus personalized jobs, but that flow is not complete yet
 
 ## Crawler API
 

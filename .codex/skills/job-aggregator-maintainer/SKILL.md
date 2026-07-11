@@ -8,12 +8,15 @@ description: Use this skill when working inside the job-aggregator repository on
 Use this skill for repo-specific work that changes service boundaries, data flow,
 deployment packaging, or operational behavior.
 
+Current product status: the repo already supports multi-provider crawl, master-data persistence, and backend matching, but the candidate-facing live crawl-and-personalize website flow is not complete yet. Today, admin-triggered crawl from the UI is the active near-term target; candidate-triggered live personalized search remains a later milestone.
+Current supported UI crawl entrypoint: admin triggers multi-provider crawling from the UI; candidate self-serve keyword crawl is still future-state.
+
 ## Repo map
 
 - `app/`: core job API, ingest endpoint, raw job persistence, master-data projection, business rules.
 - `shared/`: shared runtime modules such as config, database, models, schemas, and logging.
 - `crawler_service/`: crawl4ai-backed crawler API for TopCV, ITViec, and future site adapters.
-- `candidate_service/`: CV intake API, parsing, matching, task queue worker.
+- `candidate_service/`: CV intake API, parsing, matching, task queue worker, and recurring crawl orchestration.
 - `docker/`: service-specific Dockerfiles.
 - `helm-chart/`: Helm chart packaging the recommended application topology.
 - `tests/`: API, business-rule, export, and candidate workflow tests.
@@ -29,6 +32,8 @@ deployment packaging, or operational behavior.
 - Provider-specific crawling belongs in `crawler_service/crawlers/`.
 - Provider-specific normalization belongs in `app/business_rules/providers/`.
 - The candidate API should remain stateless. Heavy work belongs in `candidate_service/worker.py`.
+- Current UI/UX alignment is partial: admin operational flows are ahead of candidate search-now flows.
+- When implementing candidate website features, distinguish clearly between current admin-triggered crawl behavior and the future candidate-triggered personalized crawl journey.
 - The live candidate queue path still defaults to `QUEUE_BACKEND=database`.
 - Target PostgreSQL-compatible production behavior, not SQLite assumptions.
 - When topology or build flow changes, update Dockerfiles, `helm-chart/`, CI workflows, README, and this skill together.
@@ -116,6 +121,13 @@ helm template job-aggregator ./helm-chart -f ./helm-chart/examples/nats.values.y
 - Start in `candidate_service/routes.py`, `candidate_service/service.py`, `candidate_service/task_queue.py`, and `candidate_service/worker.py`.
 - Keep heavy work off the request path.
 - Preserve idempotency around `candidate_tasks`, `job_matches`, and `job_applications`.
+- The long-term business goal is candidate-entered keywords -> multi-provider crawl -> personalized jobs. The current short-term UI target is admin-triggered crawl plus backend-driven candidate matching.
+
+### UI and product-status changes
+
+- For current UI work, preserve the thin-frontend rule: browser collects input, backend crawls/matches/persists.
+- Do not document admin-triggered crawl as the final product goal; document it as the current milestone.
+- If adding crawl controls to the UI, make sure README and this skill state whether the flow is admin-only or candidate-facing.
 
 ### Deployment changes
 
