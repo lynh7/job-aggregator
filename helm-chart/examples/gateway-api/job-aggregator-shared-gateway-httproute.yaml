@@ -9,7 +9,6 @@ spec:
       kind: Gateway
       name: internal-monitoring-gateway
       namespace: monitoring
-      sectionName: https
   hostnames:
     - job-aggregator.cluster.home.tlta.online
   rules:
@@ -17,31 +16,52 @@ spec:
         - path:
             type: PathPrefix
             value: /job-api
+      filters:
+        - type: URLRewrite
+          urlRewrite:
+            path:
+              type: ReplacePrefixMatch
+              replacePrefixMatch: /
       backendRefs:
         - kind: Service
-          name: job-aggregator-job-api
+          name: stag01-rollout-job-aggregator-job-api
           port: 8000
+
     - matches:
         - path:
             type: PathPrefix
             value: /candidate-api
+      filters:
+        - type: URLRewrite
+          urlRewrite:
+            path:
+              type: ReplacePrefixMatch
+              replacePrefixMatch: /
       backendRefs:
         - kind: Service
-          name: job-aggregator-candidate-api
+          name: stag01-rollout-job-aggregator-candidate-api
           port: 8100
+
     - matches:
         - path:
             type: PathPrefix
             value: /crawler-api
+      filters:
+        - type: URLRewrite
+          urlRewrite:
+            path:
+              type: ReplacePrefixMatch
+              replacePrefixMatch: /
       backendRefs:
         - kind: Service
-          name: job-aggregator-crawler-api
+          name: stag01-rollout-job-aggregator-crawler-api
           port: 8200
+
     - matches:
         - path:
             type: PathPrefix
             value: /
       backendRefs:
         - kind: Service
-          name: job-aggregator-ui-web
+          name: stag01-rollout-job-aggregator-ui-web
           port: 8080
