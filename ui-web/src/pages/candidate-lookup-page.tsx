@@ -37,7 +37,7 @@ export function CandidateLookupPage() {
             value={candidateIdInput}
             onInput={(event) => setCandidateIdInput((event.currentTarget as HTMLInputElement).value)}
           />
-          <sl-button onClick={() => { detail.refresh(); matches.refresh(); applications.refresh(); }} disabled={!candidateId}>Load</sl-button>
+          <button type="button" class="primary-button" onClick={() => { detail.refresh(); matches.refresh(); applications.refresh(); }} disabled={!candidateId}>Load</button>
         </div>
       </SectionCard>
 

@@ -18,7 +18,13 @@ export async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> 
 
   if (!response.ok) {
     const detail = await response.text();
-    throw new Error(detail || `Request failed with ${response.status}`);
+    throw new Error(detail || `Request failed with ${response.status} for ${url}`);
+  }
+
+  const contentType = response.headers.get('content-type') ?? '';
+  if (!contentType.toLowerCase().includes('application/json')) {
+    const body = await response.text();
+    throw new Error(`Expected JSON from ${url}, got ${contentType || 'unknown content type'}: ${body.slice(0, 120)}`);
   }
 
   return (await response.json()) as T;

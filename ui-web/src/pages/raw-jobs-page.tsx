@@ -12,7 +12,7 @@ export function RawJobsPage() {
   return (
     <SectionCard title="Raw Jobs" subtitle="Provider payload browser for admin inspection">
       <div class="toolbar-row">
-        <sl-button onClick={rawJobs.refresh}>Refresh</sl-button>
+        <button type="button" class="primary-button" onClick={rawJobs.refresh}>Refresh</button>
       </div>
       <ResourceState loading={rawJobs.loading} error={rawJobs.error} empty={!rawJobs.loading && !rawJobs.error && (rawJobs.data?.length ?? 0) === 0}>
         <div class="card-grid">

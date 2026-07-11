@@ -32,7 +32,7 @@ export function JobsPage() {
           value={query}
           onInput={(event) => setQuery((event.currentTarget as HTMLInputElement).value)}
         />
-        <sl-button onClick={jobs.refresh}>Refresh</sl-button>
+        <button type="button" class="primary-button" onClick={jobs.refresh}>Refresh</button>
       </div>
       <ResourceState loading={jobs.loading} error={jobs.error} empty={!jobs.loading && !jobs.error && filtered.length === 0}>
         <div class="table-wrap">

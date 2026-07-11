@@ -12,7 +12,7 @@ export function CandidatesPage() {
   return (
     <SectionCard title="Candidates" subtitle="Candidate submission inventory">
       <div class="toolbar-row">
-        <sl-button onClick={candidates.refresh}>Refresh</sl-button>
+        <button type="button" class="primary-button" onClick={candidates.refresh}>Refresh</button>
       </div>
       <ResourceState loading={candidates.loading} error={candidates.error} empty={!candidates.loading && !candidates.error && (candidates.data?.length ?? 0) === 0}>
         <div class="table-wrap">

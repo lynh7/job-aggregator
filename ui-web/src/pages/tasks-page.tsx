@@ -12,7 +12,7 @@ export function TasksPage() {
   return (
     <SectionCard title="Tasks" subtitle="Background queue visibility for administrators">
       <div class="toolbar-row">
-        <sl-button onClick={tasks.refresh}>Refresh</sl-button>
+        <button type="button" class="primary-button" onClick={tasks.refresh}>Refresh</button>
       </div>
       <ResourceState loading={tasks.loading} error={tasks.error} empty={!tasks.loading && !tasks.error && (tasks.data?.length ?? 0) === 0}>
         <div class="table-wrap">
