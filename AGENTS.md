@@ -1,19 +1,19 @@
 # Job Aggregator Agents
 
-Use the repo-local skill at `.codex/skills/job-aggregator-maintainer/` when
-working in this repository.
+This repository is a deprecated archive. The current hosting target is Plane on Kubernetes:
+
+- [Plane self-hosting on Kubernetes](https://developers.plane.so/self-hosting/methods/kubernetes)
+
+Use the repo-local skill at `.codex/skills/job-aggregator-maintainer/` when working in this repository.
 
 Operational rules:
 
-- Keep `app/` focused on job ingestion, raw provider payload storage, and provider/business-rule boundaries.
-- Keep `candidate_service/` focused on CV intake, parsing, matching, and worker execution.
-- Preserve `raw_jobs.payload` unchanged in connectors; provider interpretation belongs in `app/business_rules/`.
-- Treat `QUEUE_BACKEND=database` as the active production code path unless you are explicitly migrating logic onto NATS.
-- When changing runtime topology, keep `docker/`, `helm-chart/`, CI workflows, and README deployment guidance aligned.
-- Keep `helm-chart/templates/` generic and move service-specific differences into values files.
+- Treat the existing job-aggregator code as historical unless the user explicitly asks for legacy maintenance.
+- Keep `README.md`, the maintainer skill, and any repo instructions explicit that `job-aggregator` is deprecated.
+- When deployment or hosting guidance is mentioned, point to Plane's Kubernetes self-hosting docs.
+- Do not describe the old job-aggregator topology as the current product.
 
 Validation defaults:
 
-- `pytest`
-- `ruff check .`
-- `helm template` for any touched Helm values/templates
+- If you are only updating archive docs, no code validation is required.
+- If you touch legacy code, use the narrowest relevant checks for the files you changed.

@@ -1,4 +1,4 @@
 interface:
-  display_name: "Job Aggregator Maintainer"
-  short_description: "Maintain the Job Aggregator core, crawler, and candidate services"
-  default_prompt: "Use $job-aggregator-maintainer to work on the job-aggregator core API, crawler API, candidate services, Docker images, and deployment topology."
+  display_name: "Job Aggregator Archive Maintainer"
+  short_description: "Maintain the deprecated job-aggregator archive and its docs"
+  default_prompt: "Use $job-aggregator-maintainer to update the deprecated job-aggregator repository docs so they clearly point to Plane's Kubernetes self-hosting guide."
